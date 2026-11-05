@@ -344,7 +344,7 @@ function Test-Prerequisites {
         }
     }
 
-    # 复用 NFRp 的 nfrp-common（path 依赖）必须存在，否则编译会失败
+    # 复用 NFrp 的 nfrp-common（path 依赖）必须存在，否则编译会失败
     $cargoToml = Join-Path $Root 'Cargo.toml'
     if (Test-Path $cargoToml) {
         $tomlText = [System.IO.File]::ReadAllText($cargoToml)

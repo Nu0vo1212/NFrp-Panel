@@ -1,7 +1,7 @@
 <div align="center">
   <img src="frontend/src/assets/logo/frppanel-mark.png" alt="FrpPanel" width="112">
   <h1>FrpPanel</h1>
-  <p><b>给 NFRp 与官方 frp 一套看得见、管得住的管理面</b></p>
+  <p><b>给 NFrp 与官方 frp 一套看得见、管得住的管理面</b></p>
 </div>
 
 <p align="center">
@@ -24,9 +24,9 @@ FrpPanel 是面向 **[NFrp（Rust-Frp）](https://github.com/Nu0vo1212/Rust-Frp)
 
 ## 为什么需要它
 
-NFRp 与官方 frp 都能跑，但两者的**管理面**并不相同：
+NFrp 与官方 frp 都能跑，但两者的**管理面**并不相同：
 
-| 能力 | NFRp 0.7.4（实测） | 官方 frp 0.71.1（实测） |
+| 能力 | NFrp 0.7.4（实测） | 官方 frp 0.71.1（实测） |
 |---|---|---|
 | 服务端状态 | `GET /api/status`、`/api/v2/status` | 只有 `/api/v2/clients`、`/api/v2/proxies` |
 | 健康检查 | `GET /api/healthz` | **无** |
@@ -46,7 +46,7 @@ FrpPanel 把差异收敛成一套 **driver trait + 能力探测**，前端只认
 ### 实例管理
 
 - 一个面板管理多个 `frps` / `frpc` 实例，按实例隔离配置、日志、监控与凭据
-- 支持 NFRp 与官方 frp 自动探测，版本、能力位、驱动类型一目了然
+- 支持 NFrp 与官方 frp 自动探测，版本、能力位、驱动类型一目了然
 - 启动、停止、重启、配置保存与诊断，全部有明确的成功 / 失败反馈
 - 列表先读本地记录秒开，再在后台逐个探测连接状态，不阻塞打开面板
 
@@ -95,7 +95,7 @@ Driver trait（driver/）
  ├─ AdminApiDriver  仅 Admin API（不接管进程、不拥有配置）
  └─ EmbeddedDriver  预留：进程内链接 nfrp-common
    │
-   ├── frpapi/      NFRp / 官方 frp 双实现适配 + 能力探测
+   ├── frpapi/      NFrp / 官方 frp 双实现适配 + 能力探测
    ├── configfile/  校验（复用 nfrp-common）+ 备份 + 原子写
    ├── ssh/         russh 会话 + 主机指纹 + 白名单命令 + sftp
    ├── deploy/      预检 → 分步执行 → SSE 流 → 失败回滚
@@ -107,7 +107,7 @@ Driver trait（driver/）
 
 - `api/` 只做「参数 → 领域调用 → DTO」，不直接发 frp 请求
 - `driver/` 只回答「这个实例能做什么」，能力位是前端唯一的驱动差异来源
-- `frpapi/` 是兼容性的唯一出口，NFRp / 官方差异只在这里出现
+- `frpapi/` 是兼容性的唯一出口，NFrp / 官方差异只在这里出现
 - `db/` 不出现任何驱动细节
 
 更多设计说明：[`docs/01-architecture.md`](docs/01-architecture.md) ·
@@ -123,17 +123,17 @@ API 契约：[`docs/02-api.md`](docs/02-api.md)。
 | Node.js | ≥ 20 | 前端；使用 npm 即可 |
 | SQLite | 内嵌 | 由 sqlx 自带，无需单独安装 |
 | OpenSSH 客户端 | 任意 | 仅 SSH 部署需要（`sftp`）；Windows 10+ 自带 |
-| nfrp-common | 源码 | 通过 `path` 依赖本地 NFRp 仓库，见下 |
+| nfrp-common | 源码 | 通过 `path` 依赖本地 NFrp 仓库，见下 |
 
 ### 1) 关联 nfrp-common
 
-`Cargo.toml` 以 path 方式复用 NFRp 的配置解析与校验：
+`Cargo.toml` 以 path 方式复用 NFrp 的配置解析与校验：
 
 ```toml
 nfrp-common = { path = "E:/项目/RustFrp/nfrp/common" }
 ```
 
-改成你本机的 NFRp 源码路径即可。这是「与 NFRp 同源」的具体体现，不是中间层。
+改成你本机的 NFrp 源码路径即可。这是「与 NFrp 同源」的具体体现，不是中间层。
 
 ### 2) 启动后端
 
@@ -192,7 +192,7 @@ echo 你的新密码 | cargo run -p frp-panel -- --reset-admin-password --admin-
 |---|---|---|---|---|
 | **BinaryDriver**（默认） | ✅ 本机 | ✅ | 启停、读写配置、reload、代理管理、指标 | — |
 | **SshBinaryDriver** | ✅ 远程 | ✅ | 同上 + 远程部署 / 预检 / 回滚 | 需要 SSH 凭据与 sudo |
-| **AdminApiDriver** | ❌ | ❌ | 状态、代理（仅 NFRp）、指标 | 启停、编辑配置、日志 |
+| **AdminApiDriver** | ❌ | ❌ | 状态、代理（仅 NFrp）、指标 | 启停、编辑配置、日志 |
 | **EmbeddedDriver** | — | — | 预留接口 | 第一版未实现，调用返回明确错误 |
 
 **怎么选**：默认用 BinaryDriver；要管远程服务器用 SshBinaryDriver；只想把一个**已经在跑**的实例纳管起来看一眼（不改配置、不重启），用 AdminApiDriver。
@@ -242,7 +242,7 @@ set FRP_FRPS=path\to\frps.exe
 cargo test -p frp-panel --test e2e_binary -- --nocapture
 ```
 
-集成测试覆盖：登录 / RBAC、NFRp 全生命周期（启动 → 状态 → 能力 → 配置 → 备份 → 停止 → 审计）、官方 frp 语义（能力位 / `restart_required` / 拒绝 NFRp 专有段）、AdminApiDriver 边界（启停返回 409 `driver_unsupported`）、客户端动态代理路由（`admin_api` vs `config_reload`）。
+集成测试覆盖：登录 / RBAC、NFrp 全生命周期（启动 → 状态 → 能力 → 配置 → 备份 → 停止 → 审计）、官方 frp 语义（能力位 / `restart_required` / 拒绝 NFrp 专有段）、AdminApiDriver 边界（启停返回 409 `driver_unsupported`）、客户端动态代理路由（`admin_api` vs `config_reload`）。
 
 未找到对应二进制时用例会打印「跳过」而不是失败。
 

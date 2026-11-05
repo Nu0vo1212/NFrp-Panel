@@ -1,7 +1,7 @@
 //! 端到端集成测试：用**真实二进制**跑通 BinaryDriver 的核心链路。
 //!
 //! 依赖：
-//! - NFRp 的 `frps` / `frpc`（通过环境变量 `NFRP_FRPS` / `NFRP_FRPC` 指定；
+//! - NFrp 的 `frps` / `frpc`（通过环境变量 `NFRP_FRPS` / `NFRP_FRPC` 指定；
 //!   未设置时尝试常见位置，找不到则**跳过**该用例而不是失败）；
 //! - 官方 frp 的 `frps` / `frpc`（`FRP_FRPS` / `FRP_FRPC`）。
 //!
@@ -240,7 +240,7 @@ fn official_server() -> Option<PathBuf> {
     )
 }
 
-/// 写一份 NFRp 服务端配置。
+/// 写一份 NFrp 服务端配置。
 fn write_nfrp_server_config(dir: &std::path::Path, bind_port: u16, web_port: u16) -> PathBuf {
     let p = dir.join("frps.toml");
     std::fs::write(
@@ -303,11 +303,11 @@ async fn panel_auth_and_rbac() {
     assert_eq!(list["pagination"]["total"], 0);
 }
 
-/// BinaryDriver：NFRp frps 启动 → Admin API 状态 → 能力探测 → 保存配置 → 停止。
+/// BinaryDriver：NFrp frps 启动 → Admin API 状态 → 能力探测 → 保存配置 → 停止。
 #[tokio::test]
 async fn binary_driver_nfrp_full_cycle() {
     let Some(frps) = nfrp_server() else {
-        eprintln!("跳过：未找到 NFRp frps 二进制（设置 NFRP_FRPS）");
+        eprintln!("跳过：未找到 NFrp frps 二进制（设置 NFRP_FRPS）");
         return;
     };
     let panel = TestPanel::start().await;
@@ -508,7 +508,7 @@ enablePrometheus = true
         .unwrap();
     assert_eq!(reload["outcome"], "restart_required", "{reload}");
 
-    // 写入 NFRp 专有段应被判为错误（官方会直接退出）
+    // 写入 NFrp 专有段应被判为错误（官方会直接退出）
     let doc = panel.json_get(&format!("/api/instances/{id}/config")).await;
     let content = doc["content"].as_str().unwrap();
     let bad = format!("{content}\n[nlink]\nenable = true\n");
@@ -521,7 +521,7 @@ enablePrometheus = true
         .json::<serde_json::Value>()
         .await
         .unwrap();
-    assert_eq!(vr["ok"], false, "官方实现应拒绝 NFRp 专有段：{vr}");
+    assert_eq!(vr["ok"], false, "官方实现应拒绝 NFrp 专有段：{vr}");
     let codes: Vec<String> = vr["errors"]
         .as_array()
         .unwrap()
@@ -537,7 +537,7 @@ enablePrometheus = true
 #[tokio::test]
 async fn admin_api_driver_boundaries() {
     let Some(frps) = nfrp_server() else {
-        eprintln!("跳过：未找到 NFRp frps 二进制");
+        eprintln!("跳过：未找到 NFrp frps 二进制");
         return;
     };
     let panel = TestPanel::start().await;
@@ -624,7 +624,7 @@ async fn admin_api_driver_boundaries() {
 #[tokio::test]
 async fn client_dynamic_proxy_routing() {
     let (Some(frps), Some(frpc)) = (nfrp_server(), nfrp_client()) else {
-        eprintln!("跳过：未找到 NFRp frps/frpc");
+        eprintln!("跳过：未找到 NFrp frps/frpc");
         return;
     };
     let panel = TestPanel::start().await;
