@@ -1,0 +1,1430 @@
+/* ===========================================================================
+   NFrp Docs · Stylesheet
+   ---------------------------------------------------------------------------
+   Design notes:
+   - Dark first, single accent colour (pink, taken from the project icon)
+   - System font stack, zero network dependencies, so first paint is not
+     blocked by a font request on GitHub Pages
+   - Animations touch only transform and opacity (GPU composited, no reflow)
+   - Respects prefers-reduced-motion
+   - No emoji; all icons are inline SVG from Lucide (MIT)
+   =========================================================================== */
+
+/* ---------- Design tokens ---------- */
+/* Palette derived from the project icon: the pink accent */
+:root {
+  --bg: #0d0b10;
+  --bg-elev: #16131c;
+  --bg-elev-2: #1e1a26;
+  --border: #2b2433;
+  --border-strong: #3b3144;
+
+  --fg: #ece9f0;
+  --fg-muted: #a89fb4;
+  --fg-dim: #746a80;
+
+  --accent: #fb7299;
+  --accent-dim: #e55c85;
+  --accent-soft: rgba(251, 114, 153, 0.13);
+  --accent-glow: rgba(251, 114, 153, 0.28);
+
+  --warn: #ffb020;
+  --danger: #ff6699;
+  --ok: #3ecf8e;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+
+  --sidebar-w: 274px;
+  --header-h: 60px;
+  --content-max: 860px;
+
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur: 220ms;
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+          "PingFang SC", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+          "Liberation Mono", monospace;
+}
+
+/* Light theme */
+[data-theme="light"] {
+  --bg: #fdfafb;
+  --bg-elev: #ffffff;
+  --bg-elev-2: #fbf2f5;
+  --border: #f0e2e7;
+  --border-strong: #e3ccd4;
+
+  --fg: #231a20;
+  --fg-muted: #6b5a63;
+  --fg-dim: #9c8b94;
+
+  --accent: #e0457b;
+  --accent-dim: #c93568;
+  --accent-soft: rgba(224, 69, 123, 0.09);
+  --accent-glow: rgba(224, 69, 123, 0.22);
+
+  --warn: #b45309;
+  --danger: #d61f5c;
+  --ok: #12805c;
+}
+
+/* ---------- Base reset ---------- */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--header-h) + 20px);
+  -webkit-text-size-adjust: 100%;
+
+  /* ★★ 这两个属性必须**成对**出现，缺一不可：
+
+     `scrollbar-gutter` 只对「元素自己的滚动条」生效。而 `html` 默认
+     `overflow-y: visible`，此时代滚动条归**视口**所有，gutter 声明会被忽略
+     —— 实测：有滚动条时 clientWidth=1425，无滚动条时 1440，差 15px。
+
+     显式写 `overflow-y: auto` 把滚动条交给 html 自己，gutter 才起作用，
+     宽度才恒定。这正是"切主题时内容往左瞬移"的根源：
+     主题切换引起高度微变 → 跨过有无滚动条的临界 → 视口宽 15px 跳变
+     → 居中的 `.content`（margin: 0 auto）跟着横向挪。 */
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.72;
+  color: var(--fg);
+  background-color: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* ---------- Theme transition ----------
+   切主题时临时挂上，让配色平滑过渡。
+
+   ★ 注意：这里**不能**再写 `transition: none !important` 的覆盖段。
+     历史版本为了"防跳一下"在 `*` 上禁用了过渡，结果把元素自己的过渡也抹掉了，
+     切换变成瞬时跳变。现在只声明"该过渡什么"，不强行禁用它。
+
+   只过渡颜色类属性：布局/位移属性一律不参与，避免出现任何"跳一下"。
+   由 app.js 在过渡结束后摘掉（transitionend + 兜底超时）。 */
+html.theme-switching,
+html.theme-switching body,
+html.theme-switching body::before,
+html.theme-switching body::after,
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition:
+    background-color 260ms var(--ease),
+    background-image 260ms var(--ease),
+    color 260ms var(--ease),
+    border-color 260ms var(--ease),
+    border-top-color 260ms var(--ease),
+    border-bottom-color 260ms var(--ease),
+    border-left-color 260ms var(--ease),
+    border-right-color 260ms var(--ease),
+    outline-color 260ms var(--ease),
+    text-decoration-color 260ms var(--ease),
+    fill 260ms var(--ease),
+    stroke 260ms var(--ease),
+    box-shadow 260ms var(--ease);
+}
+
+/* ★ 入场动画不能被主题过渡吃掉。
+
+   上面 `html.theme-switching *` 的特异性是 (0,1,1)，比 `.reveal` 的
+   (0,1,0) 高，会用 transition 简写把入场动画的 opacity/transform 过渡
+   **整个覆盖掉**。后果：页面刚加载、入场动画还在跑的时候切主题，
+   元素会瞬间跳到终点（观感就是"闪一下"）。
+
+   这里显式把入场动画的过渡补回来 —— 而且必须放在 `*` 规则之后。 */
+html.theme-switching .reveal {
+  transition:
+    opacity 420ms var(--ease),
+    transform 420ms var(--ease),
+    background-color 260ms var(--ease),
+    background-image 260ms var(--ease),
+    color 260ms var(--ease),
+    border-color 260ms var(--ease),
+    fill 260ms var(--ease),
+    stroke 260ms var(--ease),
+    box-shadow 260ms var(--ease);
+}
+
+/* anim-in 用的是 animation（不是 transition），不受 transition 覆盖影响。
+   但 hero 标题的 titleIn 带 filter: blur，切主题时如果 blur 被覆盖会突变，
+   所以一并保证 filter 参与过渡。 */
+html.theme-switching .hero h1.anim-in {
+  transition:
+    filter 260ms var(--ease),
+    opacity 560ms var(--ease),
+    transform 560ms var(--ease),
+    color 260ms var(--ease),
+    background-color 260ms var(--ease);
+}
+
+/* 尊重"减少动态效果"：直接切，不做过渡 */
+@media (prefers-reduced-motion: reduce) {
+  html.theme-switching,
+  html.theme-switching body,
+  html.theme-switching body::before,
+  html.theme-switching body::after,
+  html.theme-switching *,
+  html.theme-switching *::before,
+  html.theme-switching *::after {
+    transition: none !important;
+  }
+}
+
+/* Page backdrop: very faint radial glow, themed */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 420px at 15% -8%, var(--accent-soft), transparent 70%),
+    radial-gradient(700px 380px at 95% 4%, rgba(251, 114, 153, 0.06), transparent 70%);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color var(--dur) var(--ease);
+}
+
+a:hover {
+  color: var(--accent-dim);
+}
+
+/* ---------- Top bar ---------- */
+.header {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: var(--header-h);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 20px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 650;
+  font-size: 15.5px;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  flex-shrink: 0;
+}
+
+.brand:hover {
+  color: var(--fg);
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  display: block;
+  border-radius: 7px;
+  flex-shrink: 0;
+  transition: transform var(--dur) var(--ease);
+  object-fit: contain;
+}
+
+.brand:hover .brand-mark {
+  transform: rotate(-6deg) scale(1.06);
+}
+
+.brand-sub {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fg-dim);
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  margin-left: 2px;
+  font-family: var(--mono);
+  letter-spacing: 0;
+}
+
+.header-spacer {
+  flex: 1;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    transform 120ms var(--ease);
+}
+
+.icon-btn:hover {
+  background: var(--bg-elev-2);
+  color: var(--fg);
+}
+
+.icon-btn:active {
+  transform: scale(0.93);
+}
+
+.icon-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+.menu-btn {
+  display: none;
+}
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  position: fixed;
+  top: var(--header-h);
+  bottom: 0;
+  left: 0;
+  width: var(--sidebar-w);
+  overflow-y: auto;
+  /* 导航滚动条出现/消失时不改变内部宽度（否则整列文字会横向闪一下） */
+  scrollbar-gutter: stable;
+  overscroll-behavior: contain;
+  padding: 22px 12px 40px 20px;
+  border-right: 1px solid var(--border);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.sidebar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
+  border: 2px solid var(--bg);
+}
+
+.nav-group + .nav-group {
+  margin-top: 22px;
+}
+
+.nav-title {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  padding: 0 10px 8px;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  margin-bottom: 1px;
+  border-radius: var(--radius-sm);
+  color: var(--fg-muted);
+  font-size: 13.6px;
+  font-weight: 450;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease);
+  position: relative;
+}
+
+.nav-link svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  opacity: 0.72;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.nav-link:hover {
+  background: var(--bg-elev-2);
+  color: var(--fg);
+}
+
+.nav-link:hover svg {
+  opacity: 1;
+}
+
+.nav-link.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 550;
+}
+
+.nav-link.active svg {
+  opacity: 1;
+}
+
+.nav-link.active::before {
+  content: "";
+  position: absolute;
+  left: -20px;
+  top: 50%;
+  width: 3px;
+  height: 17px;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  transform: translateY(-50%);
+  animation: slideIn 260ms var(--ease);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-50%) scaleY(0);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(-50%) scaleY(1);
+    opacity: 1;
+  }
+}
+
+/* ---------- Main content ---------- */
+.main {
+  margin-left: var(--sidebar-w);
+  padding: calc(var(--header-h) + 38px) 40px 140px;
+  min-height: 100vh;
+}
+
+.content {
+  max-width: var(--content-max);
+  margin: 0 auto;
+}
+
+/* Page switching: sequential handoff
+   Why not a cross fade: the two pages have completely different structure
+   (tables, code blocks, card grids), so overlapping them produces doubled
+   text at the crossover point, which reads worse than a plain cut.
+   The first version did exactly that and the screenshots showed titles
+   stamped on top of each other.
+
+   Instead: the old page fades out over 140ms, then the new one fades in
+   over 240ms. About 380ms total, which the eye reads as a page turn.
+
+   Only transform and opacity are animated (GPU composited, no reflow). */
+
+.page[hidden] {
+  display: none;
+}
+
+/* Enter: fade in from 8px below */
+.page-enter {
+  animation: pageEnter 240ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* Exit: fade out while moving up 6px. Positioned absolutely so the page
+   keeps its place and the layout does not jump during the fade. */
+.page-exit {
+  position: absolute;
+  top: calc(var(--header-h) + 38px);
+  left: var(--sidebar-w);
+  right: 40px;
+  width: min(var(--content-max), calc(100% - var(--sidebar-w) - 80px));
+  margin: 0 auto;
+  pointer-events: none;
+  animation: pageExit 140ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+@keyframes pageExit {
+  from {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    opacity: 0;
+    transform: translate3d(0, -6px, 0);
+  }
+}
+
+/* Reduced motion: no displacement, just a very short fade in */
+@media (prefers-reduced-motion: reduce) {
+  .page-enter {
+    animation: pageFade 120ms ease both;
+  }
+  .page-exit {
+    animation: none;
+    opacity: 0;
+  }
+}
+
+@keyframes pageFade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 960px) {
+  .page-exit {
+    left: 0;
+    right: 20px;
+    width: auto;
+  }
+}
+
+/* ---------- Typography ---------- */
+h1 {
+  font-size: 30px;
+  font-weight: 680;
+  letter-spacing: -0.022em;
+  line-height: 1.25;
+  margin: 0 0 10px;
+}
+
+h2 {
+  font-size: 20px;
+  font-weight: 640;
+  letter-spacing: -0.014em;
+  margin: 46px 0 14px;
+  padding-top: 10px;
+  scroll-margin-top: calc(var(--header-h) + 24px);
+}
+
+h2::after {
+  content: "";
+  display: block;
+  width: 34px;
+  height: 2px;
+  margin-top: 10px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent), transparent);
+}
+
+h3 {
+  font-size: 15.5px;
+  font-weight: 620;
+  margin: 30px 0 10px;
+  scroll-margin-top: calc(var(--header-h) + 24px);
+}
+
+p {
+  margin: 0 0 14px;
+  color: var(--fg-muted);
+}
+
+p strong,
+li strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.lead {
+  font-size: 16.5px;
+  line-height: 1.7;
+  color: var(--fg-muted);
+  margin-bottom: 26px;
+}
+
+ul,
+ol {
+  margin: 0 0 16px;
+  padding-left: 22px;
+  color: var(--fg-muted);
+}
+
+li {
+  margin-bottom: 7px;
+}
+
+li::marker {
+  color: var(--fg-dim);
+}
+
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 36px 0;
+}
+
+/* Inline code */
+code {
+  font-family: var(--mono);
+  font-size: 0.875em;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* Code blocks */
+pre {
+  position: relative;
+  margin: 0 0 18px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.65;
+  scrollbar-width: thin;
+  scrollbar-gutter: stable;
+}
+
+pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--fg);
+  font-size: inherit;
+  white-space: pre;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elev-2);
+  color: var(--fg-dim);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
+}
+
+pre:hover .copy-btn {
+  opacity: 1;
+}
+
+.copy-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.copy-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.copy-btn.copied {
+  color: var(--ok);
+  border-color: var(--ok);
+  opacity: 1;
+}
+
+/* ---------- Tables ---------- */
+.table-wrap {
+  overflow-x: auto;
+  margin: 0 0 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  scrollbar-gutter: stable;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+
+  /* ★ 固定列宽：默认的 auto 布局按内容分配列宽，切主题时字体渲染的细微
+     差异会让列宽重算（实测 TH/TD 的 left 从 645.7 跳到 420.5），
+     整列内容横向瞬移 —— 这就是"切主题时往左闪一下"的真正来源。 */
+  table-layout: fixed;
+}
+
+/* fixed 布局下长串（URL / 代码）会撑破单元格，这里允许折行 */
+th,
+td {
+  overflow-wrap: anywhere;
+}
+
+th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--fg-dim);
+  padding: 11px 14px;
+  background: var(--bg-elev-2);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  color: var(--fg-muted);
+  vertical-align: top;
+}
+
+tbody tr {
+  transition: background var(--dur) var(--ease);
+}
+
+tbody tr:hover {
+  background: var(--bg-elev-2);
+}
+
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+td code {
+  white-space: nowrap;
+}
+
+/* ---------- Callouts ---------- */
+.callout {
+  display: flex;
+  gap: 12px;
+  padding: 13px 16px;
+  margin: 0 0 20px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  background: var(--bg-elev);
+  font-size: 14px;
+  color: var(--fg-muted);
+}
+
+.callout svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+.callout.warn {
+  border-left-color: var(--warn);
+}
+
+.callout.warn svg {
+  color: var(--warn);
+}
+
+.callout.danger {
+  border-left-color: var(--danger);
+}
+
+.callout.danger svg {
+  color: var(--danger);
+}
+
+.callout > div > strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--fg);
+}
+
+.callout p:last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- Hero ---------- */
+.hero {
+  padding: 26px 0 40px;
+}
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  margin-bottom: 20px;
+  border-radius: 100px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev);
+  font-size: 12.5px;
+  color: var(--fg-muted);
+}
+
+.hero-badge .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 3px rgba(62, 207, 142, 0.16);
+  animation: pulse 2.6s var(--ease) infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.hero h1 {
+  font-size: 42px;
+  line-height: 1.14;
+  letter-spacing: -0.032em;
+  margin-bottom: 16px;
+}
+
+.hero h1 .grad {
+  background: linear-gradient(120deg, var(--accent), #ffa4c1 60%, var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.hero .lead {
+  max-width: 620px;
+  font-size: 17px;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 560;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev);
+  color: var(--fg);
+  cursor: pointer;
+  transition:
+    transform 140ms var(--ease),
+    border-color var(--dur) var(--ease),
+    background var(--dur) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+.btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn.primary {
+  background: linear-gradient(145deg, var(--accent), var(--accent-dim));
+  border-color: transparent;
+  color: #1a0b12;
+  font-weight: 620;
+}
+
+.btn.primary:hover {
+  box-shadow: 0 6px 22px -6px var(--accent-glow);
+  color: #1a0b12;
+}
+
+/* ---------- Stats ---------- */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin: 34px 0 8px;
+}
+
+.stat {
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  transition:
+    border-color var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+
+.stat:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+
+.stat-value {
+  font-size: 25px;
+  font-weight: 680;
+  letter-spacing: -0.028em;
+  line-height: 1.2;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-label {
+  font-size: 12.5px;
+  color: var(--fg-dim);
+  margin-top: 3px;
+}
+
+/* ---------- Feature cards ---------- */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(238px, 1fr));
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.card {
+  padding: 18px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  transition:
+    border-color var(--dur) var(--ease),
+    transform var(--dur) var(--ease),
+    background var(--dur) var(--ease);
+}
+
+.card:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-elev-2);
+  transform: translateY(-2px);
+}
+
+.card-icon {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.card-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.card h4 {
+  margin: 0 0 6px;
+  font-size: 14.5px;
+  font-weight: 620;
+  color: var(--fg);
+}
+
+.card p {
+  margin: 0;
+  font-size: 13.2px;
+  line-height: 1.62;
+  color: var(--fg-muted);
+}
+
+/* Card entrance, .in is added by IntersectionObserver */
+.reveal {
+  opacity: 0;
+  transform: translateY(10px);
+  transition:
+    opacity 420ms var(--ease),
+    transform 420ms var(--ease);
+}
+
+.reveal.in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ---------- Prev/next pager ---------- */
+
+/* 占位：只在真的有内容时预留高度，避免页面底部被顶一下 */
+.pager-slot:not(:empty) {
+  min-height: 96px;
+}
+
+/* 淡入：配合 app.js 的 `pager-in`。
+   用 animation 而不是 transition —— 这里要的是"出现一次"，不是可逆状态。 */
+.pager-slot.pager-in > .pager {
+  animation: pager-in 340ms var(--ease) both;
+}
+
+@keyframes pager-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.pager {
+  display: flex;
+  gap: 12px;
+  margin-top: 52px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
+.pager a {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 15px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  transition:
+    border-color var(--dur) var(--ease),
+    transform var(--dur) var(--ease);
+}
+
+.pager a:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.pager .dir {
+  font-size: 11.5px;
+  color: var(--fg-dim);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pager .dir svg {
+  width: 13px;
+  height: 13px;
+}
+
+.pager .name {
+  font-size: 14px;
+  font-weight: 560;
+  color: var(--fg);
+}
+
+.pager .next {
+  text-align: right;
+  align-items: flex-end;
+}
+
+.pager .spacer {
+  flex: 1;
+}
+
+/* ---------- Mobile ---------- */
+.scrim {
+  position: fixed;
+  inset: var(--header-h) 0 0 0;
+  z-index: 39;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur) var(--ease);
+}
+
+.scrim.show {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (max-width: 960px) {
+  .menu-btn {
+    display: grid;
+  }
+
+  .sidebar {
+    z-index: 40;
+    background-color: var(--bg);
+    transform: translateX(-100%);
+    transition: transform 260ms var(--ease);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.4);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .main {
+    margin-left: 0;
+    padding: calc(var(--header-h) + 26px) 20px 100px;
+  }
+
+  .hero h1 {
+    font-size: 31px;
+  }
+
+  h1 {
+    font-size: 25px;
+  }
+}
+
+@media (max-width: 560px) {
+  .brand-sub {
+    display: none;
+  }
+
+  .hero-actions .btn {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+
+/* ===========================================================================
+   Motion layer
+   ---------------------------------------------------------------------------
+   Everything below is additive polish: the language button, scroll progress,
+   the sliding sidebar indicator, and staggered content entrance.
+   All of it touches transform / opacity only.
+   =========================================================================== */
+
+/* ---------- Scroll progress bar ---------- */
+.progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 60;
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  background: linear-gradient(90deg, var(--accent), var(--accent-dim));
+  pointer-events: none;
+  will-change: transform;
+}
+
+/* ---------- Header gains depth once you scroll ---------- */
+.header {
+  transition:
+    box-shadow 260ms var(--ease),
+    border-color 260ms var(--ease);
+}
+
+.header.scrolled {
+  box-shadow: 0 8px 28px -18px rgba(0, 0, 0, 0.9);
+  border-bottom-color: var(--border-strong);
+}
+
+[data-theme="light"] .header.scrolled {
+  box-shadow: 0 8px 24px -18px rgba(35, 26, 32, 0.5);
+}
+
+/* ---------- Language button ---------- */
+.lang-btn {
+  /* 与 .icon-btn 同一套视觉：34px 高、8px 圆角、透明底、次要前景色。
+     唯一的差别是宽度自适应（图标 + 语言代码），而图标按钮是正方形。 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg-muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 620;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    background var(--dur) var(--ease),
+    color var(--dur) var(--ease),
+    border-color var(--dur) var(--ease),
+    transform 120ms var(--ease);
+}
+
+.lang-btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  transition: transform 620ms var(--ease);
+}
+
+/* 与 .icon-btn:hover 完全对齐：同底色、同文字色 */
+.lang-btn:hover {
+  background: var(--bg-elev);
+  color: var(--fg);
+}
+
+.lang-btn:hover svg {
+  transform: rotate(180deg);
+}
+
+.lang-btn:active {
+  transform: scale(0.94);
+}
+
+/* 键盘可达性：与图标按钮一致 */
+.lang-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 切换语言时，标签做一次轻量的翻出/翻入 */
+.lang-btn.switching #langLabel {
+  animation: lang-swap 420ms var(--ease) both;
+}
+
+@keyframes lang-swap {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  45% {
+    opacity: 0;
+    transform: translateY(-9px) scale(0.86);
+  }
+  46% {
+    opacity: 0;
+    transform: translateY(9px) scale(0.86);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* 键盘可达性 */
+.lang-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* ---------- Sliding sidebar indicator ---------- */
+.nav-indicator {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 3px;
+  height: 0;
+  border-radius: 0 3px 3px 0;
+  background: var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform 320ms cubic-bezier(0.22, 0.61, 0.36, 1),
+    height 260ms var(--ease),
+    opacity 200ms var(--ease);
+  will-change: transform;
+}
+
+/* The old ::before bar is replaced by the sliding element above */
+.nav-link.active::before {
+  display: none;
+}
+
+.sidebar {
+  position: fixed; /* already fixed, restated for the absolute child below */
+}
+
+/* ---------- Staggered content entrance ---------- */
+.anim-in {
+  animation: contentIn 420ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes contentIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* The hero title gets a slightly richer entrance */
+.hero h1.anim-in {
+  animation: titleIn 560ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes titleIn {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 18px, 0) scale(0.985);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+/* Reduced motion: entrance is a plain fade, no displacement */
+@media (prefers-reduced-motion: reduce) {
+  .anim-in,
+  .hero h1.anim-in {
+    animation: pageFade 140ms ease both;
+  }
+  .nav-indicator {
+    transition: none;
+  }
+  .lang-btn:hover svg {
+    transform: none;
+  }
+}
+
+/* ---------- Page transition: slightly longer, with a subtle accent ---------- */
+.page-enter {
+  animation: pageEnter 380ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* ---------- Card hover lift, a bit more expressive ---------- */
+.card {
+  will-change: transform;
+}
+
+.card:hover .card-icon {
+  transform: translateY(-1px) scale(1.06);
+}
+
+.card-icon {
+  transition: transform 240ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* ---------- Stat cards: number gets tabular figures so count-up does not jitter ---------- */
+.stat-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Copy button appears on focus too, for keyboard users ---------- */
+.copy-btn:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- Focus ring, consistent everywhere ---------- */
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ---------- Pager slot ---------- */
+.pager-slot {
+  min-height: 1px;
+}
+
+/* ---------- Smooth anchor scrolling inside a page ---------- */
+h2:target,
+h3:target {
+  animation: targetPulse 1.6s var(--ease);
+}
+
+@keyframes targetPulse {
+  0%,
+  100% {
+    color: inherit;
+  }
+  20% {
+    color: var(--accent);
+  }
+}
+
+/* ---------- Print ---------- */
+@media print {
+  .header,
+  .sidebar,
+  .pager,
+  .copy-btn,
+  .scrim {
+    display: none !important;
+  }
+
+  .main {
+    margin: 0;
+    padding: 0;
+  }
+
+  .page[hidden] {
+    display: block !important;
+  }
+}

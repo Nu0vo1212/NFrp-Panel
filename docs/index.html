@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FrpPanel Docs · NFrp 与官方 frp 的统一管理面板</title>
+<meta name="description" content="FrpPanel — 面向 NFrp（Rust-Frp）与官方 frp（frps / frpc）的统一 Web 管理面板。安装、实例管理、SSH 部署、驱动与能力探测、HTTP API、架构与安全说明。">
+<meta name="color-scheme" content="dark light">
+<meta property="og:title" content="FrpPanel Documentation">
+<meta property="og:description" content="A unified web panel for NFrp and the official frp, built with Rust and Vue 3">
+<meta property="og:type" content="website">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icon-32.png">
+<link rel="icon" type="image/png" sizes="128x128" href="assets/icon-128.png">
+<link rel="apple-touch-icon" href="assets/icon-256.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<div class="progress-bar" id="progressBar"></div>
+<!-- ====================== Top bar ====================== -->
+<header class="header">
+  <button class="icon-btn menu-btn" id="menuBtn" aria-label="打开导航" aria-expanded="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+  </button>
+
+  <a class="brand" href="#/overview">
+    <img class="brand-mark" src="assets/icon-128.png" alt="FrpPanel" width="26" height="26">
+    <span>FrpPanel</span>
+    <span class="brand-sub">0.0.1</span>
+  </a>
+
+  <div class="header-spacer"></div>
+
+  <div class="header-actions">
+    <a class="icon-btn" href="https://github.com/Nu0vo1212/NFrp-Panel" target="_blank" rel="noopener" aria-label="GitHub 仓库">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.65.5.5 5.65.5 12a11.5 11.5 0 0 0 7.86 10.92c.58.1.79-.25.79-.55v-1.94c-3.2.7-3.88-1.54-3.88-1.54-.53-1.34-1.29-1.7-1.29-1.7-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.71 1.26 3.37.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.29 1.18-3.09-.12-.29-.51-1.46.11-3.05 0 0 .97-.31 3.18 1.18a11 11 0 0 1 5.79 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.24 2.76.12 3.05.74.8 1.18 1.83 1.18 3.09 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.66.8.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>
+    </a>
+    <button class="icon-btn" id="themeBtn" aria-label="切换主题">
+      <svg class="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="scrim" id="scrim"></div>
+
+<!-- ====================== Sidebar ====================== -->
+<nav class="sidebar" id="sidebar" aria-label="文档导航">
+  <div class="nav-indicator" id="navIndicator"></div>
+
+  <div class="nav-group">
+    <div class="nav-title">开始</div>
+    <a class="nav-link" href="#/overview"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg><span>概览</span></a>
+    <a class="nav-link" href="#/installation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg><span>安装与运行</span></a>
+    <a class="nav-link" href="#/quick-start"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8z"/></svg><span>快速开始</span></a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-title">功能</div>
+    <a class="nav-link" href="#/instances"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/></svg><span>实例管理</span></a>
+    <a class="nav-link" href="#/ssh-deploy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4M7 8l2 2-2 2M13 12h4"/></svg><span>SSH 部署</span></a>
+    <a class="nav-link" href="#/drivers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg><span>驱动与能力探测</span></a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-title">参考</div>
+    <a class="nav-link" href="#/api"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg><span>HTTP API</span></a>
+    <a class="nav-link" href="#/architecture"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>架构</span></a>
+    <a class="nav-link" href="#/verified"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/></svg><span>已验证行为</span></a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-title">项目</div>
+    <a class="nav-link" href="#/security"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>安全说明</span></a>
+    <a class="nav-link" href="#/faq"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg><span>常见问题</span></a>
+  </div>
+</nav>
+
+<!-- ====================== Main ====================== -->
+<main class="main">
+<div class="content" id="content">
+
+<!-- ============ Overview ============ -->
+<section class="page" id="page-overview" data-title="概览" hidden>
+  <div class="hero">
+    <span class="hero-badge reveal"><span class="dot"></span><span>v0.0.1 · 首个公开版本</span></span>
+    <h1 class="reveal"><span>让 NFrp 与官方 frp</span><span class="grad">看得见、管得住</span></h1>
+    <p class="lead reveal">
+      FrpPanel 是面向 <strong>NFrp（Rust-Frp）</strong> 与<strong>官方 frp</strong>（frps / frpc）的统一 Web 管理面板。
+      后端 Rust（Axum + SQLite），前端 Vue 3 + TypeScript。默认本机二进制模式，也可以选择 SSH 远程部署，
+      或只把一台已经在跑的实例通过 Admin API 纳管起来。面板不内嵌 Go 运行时，也不做黑盒中间层——每个动作都能在日志里找到对应命令。
+    </p>
+    <div class="hero-actions reveal">
+      <a class="btn primary" href="#/quick-start">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        <span>快速开始</span>
+      </a>
+      <a class="btn" href="#/instances">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/></svg>
+        <span>实例管理</span>
+      </a>
+      <a class="btn" href="https://github.com/Nu0vo1212/NFrp-Panel" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
+        <span>GitHub</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="stats">
+    <div class="stat reveal" data-count="4"><div class="stat-value">4</div><div class="stat-label">驱动模式（含 1 预留）</div></div>
+    <div class="stat reveal" data-count="2"><div class="stat-value">2</div><div class="stat-label">NFrp / 官方 frp 双实现</div></div>
+    <div class="stat reveal" data-count="12"><div class="stat-value">12</div><div class="stat-label">SSH 部署流水线步骤</div></div>
+    <div class="stat reveal" data-count="25" data-suffix=" s"><div class="stat-value">25 s</div><div class="stat-label">Admin API 就绪轮询上限</div></div>
+  </div>
+
+  <h2>核心设计</h2>
+  <div class="cards">
+    <div class="card reveal">
+      <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+      <h4>一套 DTO，两种 frp</h4>
+      <p>driver trait 收敛差异，前端只认一份统一 DTO。NFrp 与官方 frp 的字段、端点差异全部在后端适配层吸收。</p>
+    </div>
+    <div class="card reveal">
+      <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></div>
+      <h4>能力探测，不做假成功</h4>
+      <p>不支持的能力在界面上灰化并说明原因，而不是假装成功。能力位是前端唯一的驱动差异来源。</p>
+    </div>
+    <div class="card reveal">
+      <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h8l-1 8 10-12h-8l1-8z"/></svg></div>
+      <h4>列表先本地，后探测</h4>
+      <p>打开面板先读本地记录秒开，再在后台逐个探测连接状态。探测失败只降低置信度并写入说明，不阻塞列表。</p>
+    </div>
+    <div class="card reveal">
+      <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4M7 8l2 2-2 2M13 12h4"/></svg></div>
+      <h4>SSH 一键部署</h4>
+      <p>预检 → SFTP 上传 → 校验 → 备份 → 原子替换 → systemd / nohup → 就绪轮询，失败自动回滚二进制与配置。</p>
+    </div>
+    <div class="card reveal">
+      <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/></svg></div>
+      <h4>SSE 实时步骤</h4>
+      <p>部署过程通过 SSE 实时推送步骤状态与日志，前端步骤条同步展示进度、失败原因与修复建议。</p>
+    </div>
+    <div class="card reveal">
+      <div class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg></div>
+      <h4>审计与 RBAC</h4>
+      <p>admin 可写、viewer 只读，写接口在提取器层拒绝。凭据 AES-256-GCM 加密，日志与审计统一脱敏。</p>
+    </div>
+  </div>
+
+  <h2>两种 frp 的差异</h2>
+  <p>这是面板必须存在的原因：NFrp 与官方 frp 的管理面并不相同。下表来自实测（NFrp 0.7.4 / 官方 frp 0.71.1）。</p>
+  <div class="table-wrap reveal">
+    <table>
+      <thead><tr><th>能力</th><th>NFrp 0.7.4</th><th>官方 frp 0.71.1</th></tr></thead>
+      <tbody>
+        <tr><td>服务端状态</td><td><code>/api/status</code>、<code>/api/v2/status</code></td><td>只有 <code>/api/v2/clients</code>、<code>/api/v2/proxies</code></td></tr>
+        <tr><td>健康检查</td><td><code>/api/healthz</code></td><td>无（404）</td></tr>
+        <tr><td>客户端读配置</td><td>无</td><td><code>/api/config</code>（返回 TOML 原文）</td></tr>
+        <tr><td>代理动态增删</td><td>服务端推送 + 客户端 <code>/api/proxies/add|remove</code></td><td>不可用（<code>PUT /api/config</code> 返回 200 但不生效）</td></tr>
+        <tr><td>热重载</td><td>轮询配置文件 mtime，无 HTTP 端点</td><td>服务端无热重载；frpc 需 <code>--enableReload</code></td></tr>
+        <tr><td>指标粒度</td><td>流量字节 + 连接数 + 客户端数</td><td>仅连接数 / 在线态</td></tr>
+        <tr><td>未知配置字段</td><td>宽容</td><td>零容忍（<code>unknown field</code> 直接退出）</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>这份文档怎么读</h2>
+  <div class="table-wrap reveal">
+    <table>
+      <thead><tr><th>你想做的事</th><th>看哪里</th></tr></thead>
+      <tbody>
+        <tr><td>先把面板跑起来</td><td><a href="#/installation">安装与运行</a> → <a href="#/quick-start">快速开始</a></td></tr>
+        <tr><td>添加并管理实例</td><td><a href="#/instances">实例管理</a></td></tr>
+        <tr><td>把 frp 部署到远程 Linux</td><td><a href="#/ssh-deploy">SSH 部署</a></td></tr>
+        <tr><td>理解驱动差异与能力位</td><td><a href="#/drivers">驱动与能力探测</a></td></tr>
+        <tr><td>对接或调试接口</td><td><a href="#/api">HTTP API</a></td></tr>
+        <tr><td>理解分层与目录结构</td><td><a href="#/architecture">架构</a></td></tr>
+        <tr><td>复核实测证据</td><td><a href="#/verified">已验证行为</a></td></tr>
+        <tr><td>部署到公网前的注意事项</td><td><a href="#/security">安全说明</a> · <a href="#/faq">常见问题</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ Installation ============ -->
+<section class="page" id="page-installation" data-title="安装与运行" hidden>
+  <h1>安装与运行</h1>
+  <p class="lead">面板由 Rust 后端与 Vue 3 前端组成。先用开发模式跑通，再用单进程模式部署。</p>
+
+  <h2>前置依赖</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>依赖</th><th>版本</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>Rust</td><td>≥ 1.80</td><td>后端</td></tr>
+        <tr><td>Node.js</td><td>≥ 20</td><td>前端，使用 npm</td></tr>
+        <tr><td>SQLite</td><td>内嵌</td><td>由 sqlx 自带，无需单独安装</td></tr>
+        <tr><td>OpenSSH 客户端</td><td>任意</td><td>仅 SSH 部署需要（<code>sftp</code>）；Windows 10+ 自带</td></tr>
+        <tr><td>nfrp-common</td><td>源码</td><td>通过 <code>path</code> 依赖本地 NFrp 仓库</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>1. 关联 nfrp-common</h2>
+  <p><code>Cargo.toml</code> 以 path 方式复用 NFrp 的配置解析与校验。这是「与 NFrp 同源」的具体体现，不是中间层。</p>
+  <pre><code>nfrp-common = { path = "E:/项目/RustFrp/nfrp/common" }</code></pre>
+  <p>把路径改成你本机的 NFrp 源码位置即可。</p>
+
+  <h2>2. 启动后端</h2>
+  <pre><code>cargo run -p frp-panel -- --bind 127.0.0.1:8787</code></pre>
+  <p>首次启动会在 <code>data/</code> 下生成：</p>
+  <ul>
+    <li><code>panel.db</code> — 面板数据库（实例、凭据密文、审计、备份、任务）</li>
+    <li><code>master.key</code> — 加密凭据的主密钥，权限收紧到 <code>0600</code></li>
+    <li><code>jwt.key</code> — 签发 token 的密钥，权限收紧到 <code>0600</code></li>
+    <li><code>admin.initial</code> — 管理员 <code>admin</code> 的随机初始口令，同时打印到控制台一次</li>
+  </ul>
+  <p>也可以用 <code>FRP_PANEL_ADMIN_PASSWORD</code> 环境变量指定初始口令（仅首次创建时生效）。</p>
+
+  <div class="callout warn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+    <div>
+      <strong>两个密钥文件不能丢</strong>
+      <p><code>master.key</code> 丢失后已存凭据无法解密，需重新录入；<code>jwt.key</code> 丢失只会让现有 token 失效。两者都不要进版本库。</p>
+    </div>
+  </div>
+
+  <h2>3. 启动前端（开发模式）</h2>
+  <pre><code>cd frontend
+npm install
+npm run dev      # http://127.0.0.1:5173，/api 代理到 8787</code></pre>
+
+  <h2>4. 生产模式（单进程）</h2>
+  <pre><code>cd frontend &amp;&amp; npm ci &amp;&amp; npm run build
+cd .. &amp;&amp; FRP_PANEL_STATIC_DIR=frontend/dist cargo run --release -p frp-panel
+# 访问 http://127.0.0.1:8787</code></pre>
+  <p>后端会把 <code>static_dir</code> 作为静态目录挂载，未命中的路径回退到 <code>index.html</code>，因此前端 SPA 路由可以正常工作。</p>
+
+  <h2>5. 开发启动脚本</h2>
+  <p>不想开两个终端时，可以直接用 <code>dev.bat</code>：</p>
+  <pre><code>dev.bat            :: 后端 + 前端，自动选空闲端口
+dev.bat status
+dev.bat stop</code></pre>
+
+  <h2>忘记管理员密码</h2>
+  <p>使用与后端相同的 Argon2 哈希重置，新密码从 stdin 读取，不会出现在进程列表里：</p>
+  <pre><code>echo 你的新密码 | cargo run -p frp-panel -- --reset-admin-password --admin-username admin</code></pre>
+  <p>成功后旧的 <code>data/admin.initial</code> 会被删除。此入口只适合本机管理员使用，不要包装成对公网开放的重置接口。</p>
+
+  <div class="callout">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <div>
+      <strong>面板默认只监听回环地址</strong>
+      <p>要暴露到公网请用 Nginx / Caddy 反向代理 + HTTPS，并保持 <code>bind = 127.0.0.1:8787</code>。详见<a href="#/security">安全说明</a>。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ Quick start ============ -->
+<section class="page" id="page-quick-start" data-title="快速开始" hidden>
+  <h1>快速开始</h1>
+  <p class="lead">从零到在面板里看见一个实例，大约五分钟。</p>
+
+  <h2>0. 准备</h2>
+  <ul>
+    <li>Rust ≥ 1.80、Node.js ≥ 20</li>
+    <li>一份本地 NFrp 源码（提供 <code>nfrp-common</code> path 依赖）</li>
+    <li>要管理的 frp 二进制（本机模式）或一台可 SSH 登录的 Linux 主机（远程模式）</li>
+  </ul>
+
+  <h2>1. 起后端与前端</h2>
+  <pre><code># 终端 A
+cargo run -p frp-panel -- --bind 127.0.0.1:8787
+
+# 终端 B
+cd frontend
+npm install
+npm run dev</code></pre>
+  <p>也可以用 <code>dev.bat</code> 一条命令拉起两端，脚本会自动选择空闲端口。</p>
+
+  <h2>2. 登录</h2>
+  <p>开发模式访问 <code>http://127.0.0.1:5173</code>；单进程模式访问 <code>http://127.0.0.1:8787</code>。初始管理员名为 <code>admin</code>，口令在首次启动时写入 <code>data/admin.initial</code>。</p>
+
+  <h2>3. 新建实例</h2>
+  <p>在实例页新建实例，按你的场景选择驱动：</p>
+  <ul>
+    <li><strong>本机实例</strong> — <code>binary</code>，填二进制、配置文件、日志与工作目录，面板直接接管进程</li>
+    <li><strong>远程实例</strong> — <code>ssh_binary</code>，填 SSH 主机、端口、用户、凭据与 sudo 方式，由面板完成部署</li>
+    <li><strong>已有实例</strong> — <code>admin_api</code>，只填 Admin API 的 base_url、用户与密码凭据，不接管进程与配置</li>
+  </ul>
+  <p>保存后后端会执行一次能力探测，并把版本、能力位与证据落库。实例详情页的「能力」页签可以直接看到结果。</p>
+
+  <h2>4. 启停与观察</h2>
+  <ul>
+    <li>启动 / 停止 / 重启：有明确的成功与失败反馈，不返回假成功</li>
+    <li>状态：PID、运行时长、二进制版本、Admin API 是否可达</li>
+    <li>配置：读取、校验、保存、备份与恢复；保存后可选择自动重启</li>
+    <li>日志：按文件 / 远程 / journal 统一查看，支持 SSE 跟随</li>
+    <li>监控：连接数、流量字节按时间范围查询；官方 frps 只有连接数级别</li>
+  </ul>
+
+  <h2>5. 确认后端在跑</h2>
+  <pre><code>curl http://127.0.0.1:8787/api/health</code></pre>
+  <p><code>/api/health</code> 免鉴权；其余接口需要 <code>Authorization: Bearer &lt;access_token&gt;</code>。</p>
+
+  <div class="callout warn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+    <div>
+      <strong>首次登录后立刻改密码</strong>
+      <p>修改后删除 <code>data/admin.initial</code>，不要把这个文件留在磁盘上。</p>
+    </div>
+  </div>
+
+  <h2>下一步</h2>
+  <ul>
+    <li>要理解四种驱动各自能做什么，看<a href="#/drivers">驱动与能力探测</a></li>
+    <li>要把 frp 部署到远程 Linux，看<a href="#/ssh-deploy">SSH 部署</a></li>
+    <li>要接接口或写脚本，看<a href="#/api">HTTP API</a></li>
+    <li>要暴露到公网，先读<a href="#/security">安全说明</a></li>
+  </ul>
+</section>
+
+<!-- ============ Instances ============ -->
+<section class="page" id="page-instances" data-title="实例管理" hidden>
+  <h1>实例管理</h1>
+  <p class="lead">一个面板管理多个 frps / frpc 实例，按实例隔离配置、日志、监控与凭据。</p>
+
+  <h2>一台面板，多个实例</h2>
+  <p>每个实例都有自己的驱动、实现类型（NFrp / 官方 frp）、连接方式、二进制与配置路径。实例之间不共享配置文件、日志目录、监控采样与凭据引用。面板数据库只保存引用（<code>credential_id</code>、<code>password_secret_id</code>），密文单独存放在 secrets 表中。</p>
+
+  <h2>列表先本地，再探测</h2>
+  <p>打开面板时，实例列表先读取本地记录立即渲染，不等网络探测；随后在后台逐个探测连接状态。这样即使某台机器离线、Admin API 不可达，列表也不会卡住。探测失败只降低 <code>ApiKind</code> 的置信度并写入 <code>notes</code>，不会让整个探测失败。</p>
+
+  <div class="callout">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <div>
+      <strong>能力位是前端唯一的驱动差异来源</strong>
+      <p>前端不判断「这是哪个驱动」，只读 <code>GET /api/instances/:id</code> 返回的 <code>capabilities</code>。不支持的操作在界面上灰化，并展示具体原因。</p>
+    </div>
+  </div>
+
+  <h2>实例生命周期与入口</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>操作</th><th>接口</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>启动 / 停止 / 重启</td><td><code>POST /api/instances/:id/start</code><br><code>POST /api/instances/:id/stop</code><br><code>POST /api/instances/:id/restart</code></td><td>Binary 与 SSH 驱动接管进程；AdminApiDriver 返回 <code>409 driver_unsupported</code></td></tr>
+        <tr><td>状态</td><td><code>GET /api/instances/:id/status</code></td><td>state / healthy / pid / uptime / api_reachable / counters</td></tr>
+        <tr><td>读配置</td><td><code>GET /api/instances/:id/config</code></td><td>返回 TOML 原文、解析结果、sha256 与兼容性诊断</td></tr>
+        <tr><td>保存配置</td><td><code>PUT /api/instances/:id/config</code></td><td>body 带 <code>{ apply: boolean }</code>；返回备份与 reload 结果</td></tr>
+        <tr><td>校验配置</td><td><code>POST /api/instances/:id/config/validate</code></td><td>schema 校验，或调用目标二进制的 verify / <code>--check</code></td></tr>
+        <tr><td>备份与恢复</td><td><code>GET .../config/backups</code><br><code>POST .../config/restore</code></td><td>按时间戳备份；恢复同样走校验与原子写</td></tr>
+        <tr><td>重载</td><td><code>POST /api/instances/:id/reload</code></td><td>返回 <code>hot</code> / <code>restart_required</code> / <code>unsupported</code> / <code>restarted</code></td></tr>
+        <tr><td>代理</td><td><code>GET/POST /api/instances/:id/proxies</code><br><code>PATCH/DELETE .../proxies/:name</code></td><td>返回 <code>applied_via</code>：admin_api / config_reload / config_restart</td></tr>
+        <tr><td>日志</td><td><code>GET .../logs</code><br><code>GET .../logs/stream</code></td><td>文件 / 远程 / journal 统一分页；SSE 跟随</td></tr>
+        <tr><td>指标</td><td><code>GET .../metrics?range=1h|6h|24h|7d</code><br><code>GET .../metrics/live</code></td><td>采样落库后的趋势与实时快照</td></tr>
+        <tr><td>部署</td><td><code>POST .../deploy/preflight</code><br><code>POST .../deploy</code></td><td>仅 SSH 驱动；任务通过 SSE 订阅</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>配置写入流程</h2>
+  <p>本机与远程走同一套语义：</p>
+  <pre><code>1. 校验（schema / 目标二进制）      失败 → 不写
+2. 读取旧文件 → 备份到 &lt;file&gt;.bak.&lt;UTC 时间戳&gt;
+3. 写临时文件 &lt;file&gt;.tmp.&lt;rand&gt;（权限递归自旧文件）
+4. fsync → rename 覆盖（POSIX 原子；Windows 用替换语义）
+5. 校验目标文件内容哈希一致
+6. 触发 reload；失败且策略为 auto_restart → 重启
+7. 记审计（备份路径、文件 sha256 前后值，不含密钥内容）</code></pre>
+  <div class="callout warn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+    <div>
+      <strong>配置编辑会丢失注释</strong>
+      <p>保存时按 TOML 值序列化，注释不保留。请以备份回滚兜底；需要保留注释的场景请直接改文件后再让面板读取。</p>
+    </div>
+  </div>
+
+  <h2>代理：先分清来源</h2>
+  <p><code>ProxyInfo</code> 用 <code>source</code> 与 <code>managed_by</code> 区分「配置文件里定义的」「面板动态加的」「服务端推送的」。删除时按来源选择端点：客户端本地动态代理走客户端 Admin API；服务端推送的代理走服务端 Admin API（带 <code>run_id</code> 与名称）。NFrp 0.5.5 起，远程下发不能删除或覆盖配置文件里定义的代理。</p>
+
+  <h2>监控与日志</h2>
+  <p>指标能力分三档：<code>full</code>（NFrp，含流量字节）、<code>aggregated</code>（官方 frps，仅连接数与在线态）、<code>none</code>。日志来源分 <code>file</code> / <code>remote</code> / <code>journal</code>，在同一个 <code>LogPage</code> 结构里返回，前端不需要按驱动分支。</p>
+</section>
+
+<!-- ============ SSH deploy ============ -->
+<section class="page" id="page-ssh-deploy" data-title="SSH 部署" hidden>
+  <h1>SSH 部署</h1>
+  <p class="lead">SshBinaryDriver 负责远程预检、上传、安装、启动与回滚。每一步都能在部署页签看到状态、日志与失败原因。</p>
+
+  <h2>前置条件</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>项</th><th>要求</th><th>检查方式</th></tr></thead>
+      <tbody>
+        <tr><td>目标系统</td><td>Linux（systemd 或 nohup）</td><td>预检第 1 项</td></tr>
+        <tr><td>SSH 服务</td><td>端口可达，允许密码或公钥登录</td><td>向导「测试连接」</td></tr>
+        <tr><td>sudo</td><td>免密（<code>sudo -n</code>）或 root</td><td>预检「sudo 权限」</td></tr>
+        <tr><td>本机 sftp</td><td>面板所在主机有 <code>sftp</code> 命令</td><td>预检「上传二进制」</td></tr>
+        <tr><td>磁盘</td><td>≥ 200 MB</td><td>预检「磁盘空间」</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout warn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+    <div>
+      <strong>sudo 需要密码时面板会明确失败</strong>
+      <p>面板不做交互式提权。请给对应用户 <code>NOPASSWD</code>，或改用 root 登录，或选择 <code>sudo -n</code> 模式。</p>
+    </div>
+  </div>
+
+  <h2>首次连接与主机指纹</h2>
+  <p>面板默认拒绝未知主机，没有「跳过校验」的开关。流程是：</p>
+  <ol>
+    <li>点击「测试连接」；</li>
+    <li>若主机未受信任，后端只完成 SSH 握手、不发送任何凭据，返回指纹（<code>SHA256:…</code>）；</li>
+    <li>前端展示指纹，要求人工比对；</li>
+    <li>确认后写入 <code>host_keys</code> 表，并同步到面板的 known_hosts 供 <code>sftp</code> 子进程二次校验；</li>
+    <li>指纹与已保存记录不一致时拒绝连接——要用新指纹必须先移除旧记录。</li>
+  </ol>
+  <p>在目标机上核对：</p>
+  <pre><code>ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+# 输出形如：256 SHA256:xxxxxxxx... root@host (ED25519)</code></pre>
+  <p>面板的指纹算法是 <code>SHA256:base64</code>，与 <code>ssh-keygen -lf</code> 一致（去掉末尾 <code>=</code>）。</p>
+
+  <h2>环境探测</h2>
+  <p>全部使用只读命令，结果决定后续默认值：有 systemd 就用 systemd，没有则自动切到 nohup 并在界面标注。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>探测项</th><th>命令（白名单生成）</th></tr></thead>
+      <tbody>
+        <tr><td>OS / 内核 / 架构 / 主机名</td><td><code>uname -s; uname -r; uname -m; hostname</code></td></tr>
+        <tr><td>systemd</td><td><code>command -v systemctl &amp;&amp; echo yes || echo no</code></td></tr>
+        <tr><td>用户与 sudo</td><td><code>id -un; sudo -n true &amp;&amp; echo sudo:nopasswd || echo sudo:password</code></td></tr>
+        <tr><td>磁盘可用</td><td><code>df -Pm &lt;dir&gt; | awk 'NR==2{print $4}'</code></td></tr>
+        <tr><td>已装 frp</td><td>遍历 <code>/usr/local/bin/{frps,frpc}</code>、<code>/usr/bin/{frps,frpc}</code></td></tr>
+        <tr><td>端口占用</td><td><code>ss -Hltn</code> 或 <code>netstat -ltn</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>安装来源</h2>
+  <ul>
+    <li><strong>使用远端已有</strong> — 只下发配置，不替换二进制，适合接管已有安装</li>
+    <li><strong>上传本地文件</strong> — 浏览器读取 → base64 → 后端解码 → SFTP 上传</li>
+    <li><strong>从 URL 下载</strong> — 后端下载（限 128 MB），可带 SHA256 校验</li>
+  </ul>
+  <p>三种来源最终都先落到 <code>/tmp/frppanel-&lt;name&gt;-&lt;时间戳&gt;</code>。校验规则：SHA256 必须一致（上传后远端再算一次 <code>sha256sum</code>）；读 ELF 头的 <code>e_machine</code> 判断架构（amd64 / arm64 / arm / 386），与目标机 <code>uname -m</code> 不一致直接失败；PE 文件（Windows）会被明确拒绝。</p>
+
+  <h2>部署执行顺序</h2>
+  <pre><code>[probe]           探测环境（只读）
+[upload_binary]   SFTP 上传到 /tmp
+[verify_binary]   远端 sha256sum + ELF 架构校验
+[install_binary]  备份旧二进制 → mv 原子替换 → chmod 0755
+[write_config]    备份旧配置 → 写临时文件 → mv 原子替换
+[write_unit]      写 /etc/systemd/system/&lt;unit&gt;.service（无 systemd 跳过）
+[daemon_reload]   systemctl daemon-reload
+[enable_service]  systemctl enable
+[write_pid_dir]   nohup 模式：准备日志目录
+[start_service]   systemctl restart 或 nohup 启动
+[wait_admin_api]  轮询 /api/healthz → /api/v2/status → /api/status（最多 25 秒）
+[verify_status]   读取二进制版本，落库部署状态</code></pre>
+  <p>重复部署会先备份 <code>&lt;binary&gt;.bak.&lt;时间戳&gt;</code> 与 <code>&lt;config&gt;.bak.&lt;时间戳&gt;</code> 再覆盖；配置文件用「临时文件 + <code>mv</code>」替换，不会出现半个文件。</p>
+
+  <h2>失败回滚</h2>
+  <ul>
+    <li>启动命令非零退出；</li>
+    <li>25 秒内 Admin API 未就绪。</li>
+  </ul>
+  <p>出现上述情况时，面板把备份的二进制与配置复制回去，把任务标为 <code>rolled_back</code>，并在失败步骤上显示修复建议。回滚只还原二进制与配置，不尝试重启服务，避免掩盖问题。</p>
+  <p>手动回滚入口：详情页「部署」页签的回滚按钮；配置页签「历史备份」→ 选择某份 →「恢复」。</p>
+
+  <h2>systemd unit 模板</h2>
+  <pre><code>[Unit]
+Description=frp server (managed by FrpPanel)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/frps -c /etc/nfrp/frps.toml
+WorkingDirectory=/var/lib/nfrp
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65535
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nfrp-server
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+  <p>查看日志：<code>journalctl -u nfrp-server -f</code>。无 systemd 时同一模块生成 nohup 守护脚本（start / stop / restart / status），用 <code>&lt;config&gt;.pid</code> 记录 PID；该模式不会开机自启，界面会标注「非 systemd 模式」。</p>
+
+  <h2>安全约束（实现层面）</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>约束</th><th>实现位置</th></tr></thead>
+      <tbody>
+        <tr><td>主机密钥必须校验，无可关闭开关</td><td><code>ssh/hostkey.rs</code>、<code>ssh/session.rs::check_server_key</code></td></tr>
+        <tr><td>只执行白名单模板命令</td><td><code>ssh/exec.rs::AllowedCommand</code></td></tr>
+        <tr><td>路径参数过字符白名单</td><td><code>ssh/exec.rs::check_path</code></td></tr>
+        <tr><td>自定义提权命令默认关闭，且禁止管道 / 重定向 / 命令替换</td><td><code>ssh/exec.rs::SudoPrefix::build</code></td></tr>
+        <tr><td>凭据加密存储，AAD 绑定记录 ID</td><td><code>crypto.rs::KeyRing::encrypt</code></td></tr>
+        <tr><td>凭据不落盘（<code>SSH_ASKPASS</code> 临时脚本 0600，用后即删）</td><td><code>ssh/sftp.rs::TempSecret</code></td></tr>
+        <tr><td>审计记录主机 / 操作 / 结果 / 耗时，不含凭据</td><td><code>audit/mod.rs::redact_json</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>手工验证清单</h2>
+  <pre><code># 1) 目标机准备（root 或有免密 sudo 的用户）
+uname -m
+ls /etc/ssh/ssh_host_*_key.pub
+df -h /usr/local/bin
+
+# 2) 面板侧：新建实例 → SSH → 测试连接 → 信任指纹 → 探测
+# 3) 上传对应架构的 frps → 预检
+# 4) 执行部署，观察步骤条与日志流
+# 5) 目标机上核对
+systemctl status nfrp-server
+/usr/local/bin/frps -v
+ls -l /etc/nfrp/ /usr/local/bin/frps*.bak.*
+
+# 6) 面板侧：状态页应显示 running + Admin API 可达
+# 7) 故意写错配置（例如端口冲突）再部署 → 预期失败并回滚</code></pre>
+
+  <div class="callout warn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+    <div>
+      <strong>Admin API 必须能从面板主机直连</strong>
+      <p>若 frp 面板端口只监听 <code>127.0.0.1</code>，<code>wait_admin_api</code> 会失败并回滚。请把 <code>webServer.addr</code> 改为 <code>0.0.0.0</code>（务必配强口令），或自建隧道。</p>
+    </div>
+  </div>
+
+  <h2>已知限制</h2>
+  <ul>
+    <li>SFTP 依赖系统 OpenSSH 客户端（<code>russh 0.54</code> 不含 SFTP 实现）；主机密钥仍由 russh 校验，<code>sftp</code> 另带 <code>StrictHostKeyChecking=yes</code></li>
+    <li>sudo 需要密码的场景不支持；ssh-agent 认证未实现</li>
+    <li>尚未在大量 Linux 发行版上做矩阵验证，代码路径与预检逻辑完备，欢迎按上面的清单在你的环境验证</li>
+  </ul>
+</section>
+
+<!-- ============ Drivers ============ -->
+<section class="page" id="page-drivers" data-title="驱动与能力探测" hidden>
+  <h1>驱动与能力探测</h1>
+  <p class="lead">同一套语义，四种实现；调用方不需要判断驱动类型。无法提供的可选能力用「能力位 + 明确的错误」表达，而不是撒谎返回空数据。</p>
+
+  <h2>四种驱动</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>驱动</th><th>接管进程</th><th>拥有配置</th><th>能做什么</th><th>不能做什么</th></tr></thead>
+      <tbody>
+        <tr><td><strong>BinaryDriver</strong>（默认）</td><td>✅ 本机</td><td>✅</td><td>启停、读写配置、reload、代理管理、指标</td><td>—</td></tr>
+        <tr><td><strong>SshBinaryDriver</strong></td><td>✅ 远程</td><td>✅</td><td>同上 + 远程部署 / 预检 / 回滚</td><td>需要 SSH 凭据与 sudo</td></tr>
+        <tr><td><strong>AdminApiDriver</strong></td><td>❌</td><td>❌</td><td>状态、代理（仅 NFrp）、指标</td><td>启停、编辑配置、日志</td></tr>
+        <tr><td><strong>EmbeddedDriver</strong></td><td>—</td><td>—</td><td>预留接口</td><td>第一版未实现，调用返回明确错误</td></tr>
+      </tbody>
+    </table>
+    <p>怎么选：默认用 BinaryDriver；要管远程服务器用 SshBinaryDriver；只想把一个已经在跑的实例纳管起来看一眼（不改配置、不重启），用 AdminApiDriver。</p>
+  </div>
+
+  <h2>能力位</h2>
+  <p>能力探测的结果是一个 <code>Capabilities</code> 对象，随实例详情返回并落库。前端只读这份数据来决定按钮是否可用。</p>
+  <pre><code>pub struct Capabilities {
+    pub flavor: BinaryFlavor,            // Nfrp | OfficialFrp
+    pub flavor_version: Option&lt;String&gt;,
+    pub api_kind: ApiKind,               // Nfrp | Official | Unknown
+    pub managed_locally: bool,
+    pub remote: bool,
+    pub can_start_stop: bool,
+    pub can_reload: bool,
+    pub can_edit_config: bool,
+    pub can_dynamic_proxy: bool,
+    pub can_manage_visitors: bool,
+    pub has_v2_api: bool,
+    pub has_healthz: bool,
+    pub prometheus: PrometheusSupport,   // Off | Enabled | Unknown
+    pub metrics_detail: MetricDetail,    // Full | Aggregated | None
+    pub auth_guard_header: bool,         // NFrp 客户端写操作需 X-Nfrp-Client
+    pub notes: Vec&lt;CapabilityNote&gt;,
+}</code></pre>
+
+  <h2>探测算法</h2>
+  <ol>
+    <li>取 Admin API base 与凭据。凭据从面板加密存储中解密，仅在服务端内存中出现。</li>
+    <li>并发请求 <code>GET /api/v2/version</code>、<code>/api/v2/status</code>、<code>/api/status</code>、<code>/api/healthz</code>。</li>
+    <li>按命中组合判定 <code>ApiKind</code>：<code>v2/version</code> 命中且含 <code>frp_wire_version</code> ⇒ 极可能是 NFrp；<code>/api/status</code> 顶层有 <code>clients[]</code> ⇒ NFrp 服务端；顶层有 <code>tcp[]/udp[]/http[]</code> 键 ⇒ 官方 frpc；<code>/api/v2/*</code> 返回 <code>{code,msg,data:{items,total}}</code> 信封 ⇒ 官方服务端。</li>
+    <li>版本优先取 <code>/api/v2/version.data.server</code>，否则取二进制 <code>-v</code>（本机 / SSH），最后取 <code>clients.version</code>。</li>
+    <li>把结果连同证据（哪个端点返回什么状态码）落库，前端「能力」页签原样展示。</li>
+  </ol>
+  <p>判定必须容错且可解释：任何一项拿不到都不应让整体探测失败，只降低 <code>ApiKind</code> 置信度并写入 <code>notes</code>。</p>
+
+  <h2>reload 的三种结果</h2>
+  <p>这是本项目的核心正确性点。服务端没有 reload 端点，热重载靠轮询配置文件 mtime。</p>
+  <pre><code>pub enum ReloadOutcome {
+    Hot,                                  // 已热生效
+    RestartRequired { fields: Vec&lt;String&gt; }, // 该字段无法热改
+    Unsupported,                          // 当前实现不支持
+}</code></pre>
+  <pre><code>BinaryDriver/NFrp     → 写文件 → 轮询 mtime（≤3s）→ 抓 /api/v2/status 比对
+                      → 成功 Hot；字段无法热改 → RestartRequired
+BinaryDriver/Official → 写文件 → 若进程以 --enableReload 运行 → 触发 reload
+                      → 否则 RestartRequired（可选 auto_restart_on_save）
+Client 侧（两边）      → 重写 [[proxies]] 后重启或触发热加载
+AdminApiDriver        → Unsupported（只有所有者能改配置）</code></pre>
+
+  <h2>AdminApiDriver 的边界</h2>
+  <p>它没有配置文件所有权，因此不能编辑配置、不能改变代理的持久定义。对 <code>PUT /api/instances/:id/config</code> 与持久化语义的 <code>PATCH .../proxies/:name</code> 返回 <code>409 driver_immutable</code>；对启停返回 <code>409 driver_unsupported</code>。前端灰化按钮并给出原因，而不是假装成功。</p>
+
+  <h2>实例列表里的能力</h2>
+  <p>能力探测在启动 / 连接时执行，结果缓存并落库。实例列表先读本地记录秒开，后台再逐个探测；探测结果会更新版本、能力位与连接状态，但不改变列表的可用性。</p>
+
+  <h2>驱动实现对照</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>方法</th><th>BinaryDriver</th><th>AdminApiDriver</th><th>SshBinaryDriver</th></tr></thead>
+      <tbody>
+        <tr><td>start / stop / restart</td><td>本机进程（进程组 + 优雅停止 → 强制）</td><td><code>Unsupported</code></td><td>SSH 执行 <code>systemctl</code> 或 nohup 脚本</td></tr>
+        <tr><td>health</td><td>PID 存活 + Admin API 可达 + 端口监听</td><td>Admin API 可达</td><td>远程 PID / systemd active + Admin API</td></tr>
+        <tr><td>status</td><td>Admin API（服务端 / 客户端端点分流）</td><td>Admin API</td><td>远程 Admin API</td></tr>
+        <tr><td>read / write config</td><td>本机文件系统，原子写 + 备份</td><td><code>Unsupported</code></td><td>SFTP 原子写 + 远程备份</td></tr>
+        <tr><td>create / delete proxy</td><td>首选 Admin API 动态；不行 → 配置改写 + reload</td><td>仅 Admin API</td><td>同 Binary（远程）</td></tr>
+        <tr><td>metrics</td><td>Admin API + Prometheus 抓取 + 面板采样</td><td>同左</td><td>同左（远程）</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ API ============ -->
+<section class="page" id="page-api" data-title="HTTP API" hidden>
+  <h1>HTTP API</h1>
+  <p class="lead">前端只与本后端通信，永不直连 frp Admin API。以下为契约摘要，完整字段见仓库中的 <code>docs/02-api.md</code>。</p>
+
+  <h2>基础约定</h2>
+  <ul>
+    <li>Base：<code>/api</code></li>
+    <li>认证：<code>Authorization: Bearer &lt;access_token&gt;</code>（登录与健康检查除外）</li>
+    <li>内容：<code>application/json; charset=utf-8</code></li>
+    <li>时间：RFC3339 UTC，例如 <code>2026-11-03T13:47:04Z</code></li>
+    <li>分页：<code>?page=1&amp;page_size=20</code> → <code>{ items, pagination: { page, page_size, total, total_pages } }</code></li>
+    <li>流：SSE（<code>text/event-stream</code>），事件 <code>step</code> / <code>log</code> / <code>done</code> / <code>error</code>，带 <code>id</code> 便于断线续传</li>
+  </ul>
+
+  <h2>统一错误信封</h2>
+  <pre><code>{ "error": { "code": "driver_unsupported", "message": "该驱动不拥有配置文件", "details": { "driver": "admin_api" } } }</code></pre>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>code</th><th>HTTP</th><th>含义</th></tr></thead>
+      <tbody>
+        <tr><td><code>bad_request</code></td><td>400</td><td>参数错误</td></tr>
+        <tr><td><code>unauthorized</code></td><td>401</td><td>未登录 / token 过期</td></tr>
+        <tr><td><code>forbidden</code></td><td>403</td><td>角色不足</td></tr>
+        <tr><td><code>not_found</code></td><td>404</td><td>资源不存在</td></tr>
+        <tr><td><code>conflict</code></td><td>409</td><td>状态冲突（如已在运行）</td></tr>
+        <tr><td><code>driver_unsupported</code></td><td>409</td><td>当前驱动不支持该操作</td></tr>
+        <tr><td><code>upstream_failed</code></td><td>502</td><td>frp Admin API / SSH 返回失败</td></tr>
+        <tr><td><code>validation_failed</code></td><td>422</td><td>配置校验不通过（<code>details.errors[]</code>）</td></tr>
+        <tr><td><code>internal</code></td><td>500</td><td>服务端内部错误</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>认证</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>方法 / 路径</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><code>POST /api/auth/login</code></td><td>返回 access_token、refresh_token、expires_in 与 user</td></tr>
+        <tr><td><code>POST /api/auth/refresh</code></td><td>刷新 token</td></tr>
+        <tr><td><code>POST /api/auth/logout</code></td><td>204</td></tr>
+        <tr><td><code>GET /api/auth/me</code></td><td>当前用户</td></tr>
+        <tr><td><code>GET /api/health</code></td><td>免鉴权健康检查</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>实例</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>方法 / 路径</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /api/instances</code></td><td>实例摘要列表（含 live 状态与 capabilities）</td></tr>
+        <tr><td><code>POST /api/instances</code></td><td>创建实例 → 201 InstanceDetail</td></tr>
+        <tr><td><code>GET /api/instances/:id</code></td><td>实例详情（Admin 密码永不回显明文）</td></tr>
+        <tr><td><code>PATCH /api/instances/:id</code></td><td>部分字段更新</td></tr>
+        <tr><td><code>DELETE /api/instances/:id</code></td><td>204；<code>?force=true</code> 时运行中也删除</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>创建实例的核心字段：<code>role</code>（server / client）、<code>driver</code>、<code>flavor</code>、<code>connection</code>（local / ssh）、<code>paths</code>、<code>service_mode</code>、<code>admin_api</code>。SSH 连接还需 <code>credential_id</code> 与 <code>sudo</code> 模式。</p>
+
+  <h2>生命周期</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>方法 / 路径</th><th>返回</th></tr></thead>
+      <tbody>
+        <tr><td><code>POST /api/instances/:id/start</code></td><td><code>{ state, pid }</code></td></tr>
+        <tr><td><code>POST /api/instances/:id/stop</code></td><td><code>{ state }</code>（body 可带 <code>{ force }</code>）</td></tr>
+        <tr><td><code>POST /api/instances/:id/restart</code></td><td><code>{ state, pid }</code></td></tr>
+        <tr><td><code>GET /api/instances/:id/status</code></td><td><code>InstanceStatus</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <pre><code>interface InstanceStatus {
+  state: 'running' | 'stopped' | 'unknown' | 'error'
+  healthy: boolean
+  pid: number | null
+  uptime_secs: number | null
+  binary_version: string | null
+  api_reachable: boolean
+  last_error: string | null
+  detail: { source: 'process' | 'admin_api' | 'ssh', notes: string[] }
+  counters?: { clients: number, proxies: number, conns: number, bytes_in: number, bytes_out: number }
+}</code></pre>
+
+  <h2>配置</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>方法 / 路径</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /api/instances/:id/config</code></td><td><code>ConfigDoc</code>：原文、path、sha256、parsed、diagnostics、editable</td></tr>
+        <tr><td><code>PUT /api/instances/:id/config</code></td><td>body <code>{ apply }</code> → <code>ConfigWriteResult</code></td></tr>
+        <tr><td><code>POST /api/instances/:id/config/validate</code></td><td><code>ValidationReport</code></td></tr>
+        <tr><td><code>GET /api/instances/:id/config/backups</code></td><td><code>BackupItem[]</code></td></tr>
+        <tr><td><code>POST /api/instances/:id/config/restore</code></td><td>body <code>{ backup_id }</code> → <code>ConfigWriteResult</code></td></tr>
+        <tr><td><code>POST /api/instances/:id/reload</code></td><td><code>hot | restart_required | unsupported | restarted</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <pre><code>interface ConfigWriteResult {
+  applied: ReloadOutcome
+  backup: { id: string, path: string, created_at: string } | null
+  warnings: Diagnostic[]
+}</code></pre>
+
+  <h2>代理 / Visitor</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>方法 / 路径</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /api/instances/:id/proxies</code></td><td><code>ProxyInfo[]</code>，区分 config / dynamic 来源</td></tr>
+        <tr><td><code>POST /api/instances/:id/proxies</code></td><td><code>ProxyOpResult</code></td></tr>
+        <tr><td><code>PATCH /api/instances/:id/proxies/:name</code></td><td><code>ProxyOpResult</code></td></tr>
+        <tr><td><code>DELETE /api/instances/:id/proxies/:name</code></td><td><code>ProxyOpResult</code></td></tr>
+        <tr><td><code>GET /api/instances/:id/visitors</code></td><td>stcp / xtcp / sudp</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><code>ProxyOpResult.applied_via</code> 会明确告诉你是 <code>admin_api</code>、<code>config_reload</code> 还是 <code>config_restart</code>，不会把「改文件后重启」伪装成动态生效。</p>
+
+  <h2>日志与指标</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>方法 / 路径</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET .../logs?offset=0&amp;limit=200&amp;q=&amp;level=&amp;tail=true</code></td><td><code>LogPage</code>，source 为 file / remote / journal</td></tr>
+        <tr><td><code>GET .../logs/download</code></td><td>下载日志</td></tr>
+        <tr><td><code>GET .../logs/stream</code></td><td>SSE 跟随</td></tr>
+        <tr><td><code>GET .../metrics?range=1h|6h|24h|7d</code></td><td>趋势序列</td></tr>
+        <tr><td><code>GET .../metrics/live</code></td><td>实时 <code>MetricsSnapshot</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>部署 / SSH</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>方法 / 路径</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><code>POST /api/instances/:id/deploy/preflight</code></td><td><code>PreflightReport</code>：pass / warn / fail / skip</td></tr>
+        <tr><td><code>POST /api/instances/:id/deploy</code></td><td><code>{ task_id }</code>（可选 <code>Idempotency-Key</code>）</td></tr>
+        <tr><td><code>POST /api/instances/:id/deploy/rollback</code></td><td><code>{ task_id }</code></td></tr>
+        <tr><td><code>GET /api/instances/:id/deploy/status</code></td><td><code>DeployTask | null</code></td></tr>
+        <tr><td><code>GET /api/deploy/tasks/:task_id/stream</code></td><td>SSE 步骤与日志</td></tr>
+        <tr><td><code>POST /api/ssh/test-connection</code></td><td>阶段化结果：connect / auth / host_key / exec / done</td></tr>
+        <tr><td><code>GET /api/ssh/host-keys</code></td><td>已信任主机指纹</td></tr>
+        <tr><td><code>POST /api/ssh/host-keys/trust</code></td><td>写入信任记录</td></tr>
+        <tr><td><code>POST /api/ssh/probe</code></td><td><code>RemoteEnvironment</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>SSE 帧</h2>
+  <pre><code>event: step
+id: 3
+data: {"key":"upload_binary","state":"running"}
+
+event: log
+id: 3-17
+data: {"ts":"...","stream":"stdout","line":"==&gt; 上传 frps 到 /usr/local/bin/frps (5.1 MB)"}
+
+event: done
+data: {"task_id":"...","state":"succeeded"}</code></pre>
+
+  <h2>凭据、审计与设置</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>方法 / 路径</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET/POST /api/credentials</code><br><code>DELETE /api/credentials/:id</code></td><td>摘要只含 <code>has_secret</code> 与 <code>••••••••</code>，永不返回明文</td></tr>
+        <tr><td><code>GET /api/audit-logs</code></td><td>按 action / result / actor / instance / 时间过滤</td></tr>
+        <tr><td><code>GET /api/audit-logs/export</code></td><td>CSV</td></tr>
+        <tr><td><code>GET/PATCH /api/settings</code></td><td>默认驱动、frp 超时、SSH 默认值、审计保留天数等</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>能力对象</h2>
+  <p><code>capabilities</code> 是前端唯一的驱动差异来源。完整字段见<a href="#/drivers">驱动与能力探测</a>。</p>
+  <pre><code>interface Capabilities {
+  flavor: 'nfrp' | 'official_frp'
+  flavor_version: string | null
+  api_kind: 'nfrp' | 'official' | 'unknown' | 'none'
+  managed_locally: boolean
+  remote: boolean
+  can_start_stop: boolean
+  can_reload: boolean
+  can_edit_config: boolean
+  can_dynamic_proxy: boolean
+  has_v2_api: boolean
+  has_healthz: boolean
+  prometheus: 'off' | 'enabled' | 'unknown'
+  metrics_detail: 'full' | 'aggregated' | 'none'
+  auth_guard_header: boolean
+  notes: { level: 'info' | 'warning' | 'error', text: string }[]
+  probed_at: string
+}</code></pre>
+</section>
+
+<!-- ============ Architecture ============ -->
+<section class="page" id="page-architecture" data-title="架构" hidden>
+  <h1>架构</h1>
+  <p class="lead">后端 Rust（Axum 0.8 + tokio + sqlx/SQLite），前端 Vue 3 + TypeScript。分层的目的只有一个：驱动差异不扩散。</p>
+
+  <h2>分层图</h2>
+  <pre><code>Vue 3 + TS（自绘组件 + ECharts）
+   │  /api/*（JWT；只与本后端通信，永不直连 frp Admin API）
+   ▼
+Axum API 层（api/）── RBAC ── 审计
+   │
+   ▼
+Driver trait（driver/）
+ ├─ BinaryDriver    本机进程 + 配置文件 + Admin API
+ ├─ SshBinaryDriver SSH 部署 + systemd/nohup + 远程配置
+ ├─ AdminApiDriver  仅 Admin API（不接管进程、不拥有配置）
+ └─ EmbeddedDriver  预留：进程内链接 nfrp-common
+   │
+   ├── frpapi/      NFrp / 官方 frp 双实现适配 + 能力探测
+   ├── configfile/  校验（复用 nfrp-common）+ 备份 + 原子写
+   ├── ssh/         russh 会话 + 主机指纹 + 白名单命令 + sftp
+   ├── deploy/      预检 → 分步执行 → SSE 流 → 失败回滚
+   ├── metrics/     采样落库 + 趋势查询
+   └── db/          SQLite（实例、凭据密文、审计、备份、任务）</code></pre>
+
+  <h2>分层约束</h2>
+  <ul>
+    <li><code>api/</code> 只做「参数 → 领域调用 → DTO」，不直接发 frp 请求</li>
+    <li><code>driver/</code> 只回答「这个实例能做什么」，能力位是前端唯一的驱动差异来源</li>
+    <li><code>frpapi/</code> 是兼容性的唯一出口，NFrp / 官方差异只在这里出现</li>
+    <li><code>db/</code> 不出现任何驱动细节</li>
+  </ul>
+
+  <h2>目录结构</h2>
+  <pre><code>backend/
+  migrations/0001_init.sql        数据库 schema
+  src/api/                        路由与 DTO（薄层）
+  src/driver/{binary,ssh,adminapi,embedded}   四种驱动
+  src/frpapi/{nfrp,official,probe}           双实现适配与能力探测
+  src/configfile/                 校验、备份、原子写、兼容诊断
+  src/ssh/{session,exec,sftp,probe,hostkey}  SSH 全套
+  src/deploy/{plan,preflight,runner,hub}     部署编排与 SSE
+  src/auth, src/audit, src/crypto, src/db    认证、审计、加密、存储
+  src/systemd.rs                  systemd unit 模板
+  tests/e2e_binary.rs             真实二进制端到端测试
+frontend/
+  src/styles/{tokens,base}.css    设计令牌（浅 / 深）
+  src/components/                 通用组件、卡片、监控
+  src/views/{Login,Instances,InstanceDetail,InstanceWizard,Audit,Settings}
+docs/
+  01-architecture.md  02-api.md  03-ssh-deploy.md  04-verified-behavior.md</code></pre>
+
+  <h2>前端架构</h2>
+  <ul>
+    <li>单一 <code>tokens.css</code> 定义主题变量（浅 / 深两套），组件只引用变量</li>
+    <li><code>AcrylicCard</code> 封装 <code>backdrop-filter</code>，在 <code>@supports not</code> 环境下降级为不透明背景</li>
+    <li>所有页面共用 <code>InstanceStatusBadge</code> / <code>CapabilityChips</code> / <code>StateView</code>，驱动差异只体现在数据</li>
+    <li>ECharts 封装为 <code>TrafficChart</code>（双轴流量）与 <code>ConnChart</code>（连接数），主题色取自 CSS 变量</li>
+    <li>部署向导与后端 <code>DeployPlan</code> 对应，步骤失败展示 <code>remediation</code> 文案</li>
+  </ul>
+
+  <h2>面板自身配置</h2>
+  <p><code>panel.toml</code> 可被环境变量覆盖，主要段落如下：</p>
+  <pre><code>[server]
+bind = "127.0.0.1:8787"
+static_dir = ""                  # 为空则由后端内嵌前端产物
+
+[database]
+url = "sqlite://data/panel.db"
+
+[security]
+jwt_secret_file = "data/jwt.key"
+master_key_file = "data/master.key"
+access_token_ttl_minutes = 120
+refresh_token_ttl_days = 14
+
+[defaults]
+driver = "binary"                # binary | admin_api | ssh_binary | embedded
+binary_flavor = "nfrp"
+binary_dir = "bin"
+server_binary = "frps"
+client_binary = "frpc"
+
+[frp]
+admin_timeout_ms = 5000
+status_poll_ms = 10000
+metrics_history_days = 7
+
+[ssh]
+connect_timeout_ms = 10000
+command_timeout_ms = 20000
+retry = 2
+default_port = 22
+default_service = "systemd"      # systemd | nohup
+allow_custom_command = false
+
+[audit]
+enabled = true
+retention_days = 90</code></pre>
+
+  <h2>数据与状态</h2>
+  <p>面板数据库保存实例记录、凭据密文、审计日志、配置备份与部署任务。实例记录里只放凭据引用（<code>credential_id</code>、<code>password_secret_id</code>），密文单独存放，便于轮换主密钥与统一审计。指标采样按时间范围落库，趋势图按 1h / 6h / 24h / 7d 查询。</p>
+</section>
+
+<!-- ============ Verified ============ -->
+<section class="page" id="page-verified" data-title="已验证行为" hidden>
+  <h1>已验证行为</h1>
+  <p class="lead">架构决策依赖真实观测。观测时间 2026-11-03，环境 Windows 11 / rustc 1.98.1 / node 24.19.0。</p>
+
+  <h2>被测对象</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>对象</th><th>版本</th></thead>
+      <tbody>
+        <tr><td>NFrp（frps / frpc）</td><td><code>nfrp-server 0.7.4</code>，frp 兼容版本 <code>0.71.0</code></td></tr>
+        <tr><td>官方 frp</td><td><code>0.71.1</code></td></tr>
+        <tr><td>NFrp 源码</td><td>workspace <code>0.7.4</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <pre><code>frps --version   →  nfrp-server 0.7.4      （NFrp 自身版本）
+frps -v          →  0.71.0                 （frp 兼容版本）</code></pre>
+
+  <h2>NFrp 服务端 API</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>端点</th><th>鉴权</th><th>结果</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /api/status</code></td><td>无</td><td>200，顶层含 status / clients / visitors / ports / limits</td></tr>
+        <tr><td><code>GET /api/v2/version</code></td><td>无</td><td>200，含 <code>frp_wire_version</code></td></tr>
+        <tr><td><code>GET /api/v2/status</code></td><td>无</td><td>200，含 metrics / counts / limits / features</td></tr>
+        <tr><td><code>GET /api/v2/clients?all=1</code></td><td>无</td><td>200，分页信封</td></tr>
+        <tr><td><code>GET /api/v2/proxies?all=1</code></td><td>无</td><td>200，分页信封</td></tr>
+        <tr><td><code>GET /api/healthz</code></td><td>无</td><td>200，纯文本 <code>ok</code></td></tr>
+        <tr><td><code>GET /metrics</code></td><td>无</td><td>200，需 <code>enablePrometheus = true</code></td></tr>
+        <tr><td><code>POST /api/proxies/add</code></td><td>Basic</td><td>200，服务端向客户端推代理</td></tr>
+        <tr><td><code>POST /api/clients/kick</code></td><td>Basic</td><td>踢出客户端</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>NFrp 的 <code>/api/*</code> 在实测中未要求 Basic Auth（<code>/api/status</code> 无头也返回 200），鉴权只加在写接口上。面板一律携带凭据，不做假设。</p>
+
+  <h2>NFrp 客户端 API</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>端点</th><th>鉴权</th><th>结果</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /api/status</code></td><td>Basic</td><td>200 <code>{data:{client_id, connected, run_id, proxies:[...]}}</code></td></tr>
+        <tr><td><code>GET /api/proxies</code></td><td>Basic</td><td>200 <code>{data:[{name,type,local_addr,remote_port,...}]}</code></td></tr>
+        <tr><td><code>GET /api/healthz</code></td><td>无</td><td>200 <code>ok</code></td></tr>
+        <tr><td><code>POST /api/proxies/add</code></td><td>Basic + <code>X-Nfrp-Client: 1</code></td><td>缺头 → 403 forbidden；带头 → 200</td></tr>
+        <tr><td><code>POST /api/proxies/remove</code></td><td>同上</td><td>移除不存在 → 400 <code>remove_failed</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>重要语义差异：通过服务端推送的代理不在客户端本地表里，客户端 <code>POST /api/proxies/remove</code> 会失败。删除必须按来源选择端点：客户端本地动态代理走客户端 Admin API；服务端推送的代理走服务端 Admin API（带 <code>run_id</code> 与名称）。</p>
+
+  <h2>NFrp 热重载</h2>
+  <ul>
+    <li>服务端每秒轮询配置文件 mtime，变化后重新解析并应用可热改字段；解析失败忽略本次变更；安全闸门不通过则拒绝</li>
+    <li>实测改写 <code>log_level</code> 后 4 秒内日志出现热重载记录，进程未重启</li>
+    <li>没有 HTTP reload 端点，未处理 SIGHUP</li>
+    <li>Windows 上 <code>taskkill /PID</code> 优雅终止，实测 103 ms 内退出</li>
+  </ul>
+  <p>因此面板的 <code>reload()</code> 是「写文件 + 等生效 + 校验」，不是「调一个 API 就完事」。</p>
+
+  <h2>官方 frp 0.71.1 服务端</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>端点</th><th>状态</th><th>备注</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /api/status</code></td><td>404</td><td>官方 frps 没有这个端点</td></tr>
+        <tr><td><code>GET /api/v2/version</code></td><td>404</td><td>—</td></tr>
+        <tr><td><code>GET /api/v2/status</code></td><td>404</td><td>—</td></tr>
+        <tr><td><code>GET /api/v2/clients?all=1</code></td><td>200</td><td><code>{code,msg,data:{total,items:[...]}}</code></td></tr>
+        <tr><td><code>GET /api/v2/proxies?all=1</code></td><td>200</td><td>代理状态含 <code>curConns</code> 与今日流量字段</td></tr>
+        <tr><td><code>GET /api/healthz</code></td><td>404</td><td>—</td></tr>
+        <tr><td><code>GET /metrics</code></td><td>200</td><td>连接数 / 代理数指标，无流量字节</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>官方服务端没有与 NFrp 等价的实时流量字节口径（部分响应只带今日流量字段），面板的 <code>metrics_detail</code> 能力位因此标为 <code>aggregated</code>，监控只画连接数 / 在线态。</p>
+
+  <h2>官方 frp 0.71.1 客户端</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>端点</th><th>状态</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><code>GET /api/status</code></td><td>200</td><td>按类型分组：<code>{"tcp":[{name,status,local_addr,remote_addr}]}</code></td></tr>
+        <tr><td><code>GET /api/config</code></td><td>200</td><td>返回配置文件 TOML 原文</td></tr>
+        <tr><td><code>PUT /api/config</code></td><td>200（空数组）</td><td><strong>实测无效</strong>：返回 200，但 <code>/api/status</code> 无新增代理</td></tr>
+        <tr><td><code>PUT /api/config/{name}</code></td><td>404</td><td>本版本不存在</td></tr>
+        <tr><td><code>GET /api/proxies</code></td><td>502</td><td>官方无此端点</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>结论：官方 frpc 的代理动态管理不可依赖 Admin API，必须以「配置文件改写 + reload / 重启」实现。</p>
+
+  <h2>官方 frpc 配置严格性</h2>
+  <p>把 <code>webServer.*</code> 写在 <code>[[proxies]]</code> 之后时，官方 frpc 直接退出：</p>
+  <pre><code>decode proxy at index 0: unmarshal ProxyConfig error: json: unknown field "webServer"</code></pre>
+  <p>因此面板下发配置必须：使用目标二进制认识的字段名；生成时把全局段放在所有 <code>[[proxies]]</code> 之前；用目标二进制的 <code>verify</code> / <code>--check</code> 做最后一道校验。</p>
+
+  <h2>配置字段差异</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>语义</th><th>NFrp 原生</th><th>官方 frp</th><th>面板策略</th></tr></thead>
+      <tbody>
+        <tr><td>服务端监听</td><td><code>bind_addr</code> / <code>bind_port</code></td><td><code>bindAddr</code> / <code>bindPort</code></td><td>按目标 flavor 输出</td></tr>
+        <tr><td>面板端口</td><td><code>dashboard_port</code>（备用 <code>webServer.port</code>）</td><td><code>webServer.port</code></td><td>统一输出 <code>webServer.*</code></td></tr>
+        <tr><td>token</td><td>顶层 <code>token</code> 或 <code>auth.token</code></td><td><code>auth.token</code></td><td>统一 <code>auth.token</code></td></tr>
+        <tr><td>客户端本地地址</td><td><code>local_addr = "ip:port"</code>（也认两段式）</td><td><code>localIP</code> + <code>localPort</code></td><td>官方 → 两段式；NFrp → 合并式</td></tr>
+        <tr><td>传输</td><td><code>transport_protocol</code>、<code>tcp_mux</code>、<code>tls_enable</code></td><td><code>transport.protocol</code>、<code>transport.tcpMux</code>、<code>transport.tls.enable</code></td><td>按 target 输出</td></tr>
+        <tr><td>UDP 报文上限</td><td>默认 <code>65507</code></td><td>默认 <code>1500</code></td><td>显式写出并提示差异</td></tr>
+        <tr><td>协议扩展</td><td><code>[nlink]</code>、<code>[vnet]</code>、<code>[virtualNet]</code></td><td>不支持（未知字段直接退出）</td><td>目标为官方时移除并告警</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>对实现的直接影响</h2>
+  <ul>
+    <li><code>reload</code> 语义按 flavor 分流，禁止假设存在 reload 端点</li>
+    <li>Admin API 适配层区分 nfrp / official 两套结构，<code>ApiKind</code> 存库</li>
+    <li>写操作自动附加 <code>X-Nfrp-Client: 1</code>（仅 NFrp 客户端）</li>
+    <li>代理删除按来源选择端点（客户端本地 / 服务端推送）</li>
+    <li>官方 frpc 的代理增删走配置文件 + 重启</li>
+    <li>配置生成按目标 flavor 输出字段，官方目标剔除 NFrp 专有段</li>
+    <li>指标能力位区分 Full（NFrp 字节）/ Aggregated（官方连接数）/ None</li>
+    <li>Windows 停止进程使用优雅终止并等待，再强制</li>
+  </ul>
+</section>
+
+<!-- ============ Security ============ -->
+<section class="page" id="page-security" data-title="安全说明" hidden>
+  <h1>安全说明</h1>
+  <p class="lead">面板不内嵌 Go 运行时，也不做黑盒中间层；安全边界写在代码里，而不是文档里。</p>
+
+  <h2>凭据加密</h2>
+  <ul>
+    <li>SSH 密码 / 私钥、Admin API 密码使用 <strong>AES-256-GCM</strong> 加密存储，每次加密随机 96-bit nonce，AAD 绑定 <code>credential:&lt;id&gt;:secret</code></li>
+    <li>主密钥来自 <code>data/master.key</code>（权限 <code>0600</code>）或环境变量</li>
+    <li>前端永不回显明文，列表只显示「是否已设置」；接口返回 <code>has_secret</code> 与 <code>••••••••</code></li>
+    <li>frp 管理密钥不出后端：浏览器只拿到 <code>admin_api: { base_url, user, password_set: true }</code></li>
+    <li>JWT 仅存 <code>sessionStorage</code>，不落 localStorage；前端无任何 frp Admin API 直连</li>
+  </ul>
+
+  <div class="callout warn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+    <div>
+      <strong>master.key 不能丢也不能泄露</strong>
+      <p>丢失后已存凭据无法解密，需要重新录入。备份时把 <code>master.key</code> 与数据库分开保管。</p>
+    </div>
+  </div>
+
+  <h2>SSH 安全</h2>
+  <ul>
+    <li>主机指纹首次确认、变更拒绝；没有「关闭主机密钥校验」的开关</li>
+    <li>只执行白名单模板命令（<code>systemctl</code>、<code>install</code>、<code>chmod</code>、<code>mkdir</code>、<code>sha256sum</code>、<code>mv</code>、<code>tar</code> 等），参数严格转义</li>
+    <li>路径参数再过字符白名单，拒绝 <code>; | &amp; $ ` &lt; &gt; ( ) { } * ? ! " '</code></li>
+    <li>自定义提权命令默认关闭（<code>allow_custom_command = false</code>），且禁止管道 / 重定向 / 命令替换</li>
+    <li>凭据不落盘：<code>SSH_ASKPASS</code> 临时脚本权限 0600，用后即删；<code>sftp</code> 另带 <code>StrictHostKeyChecking=yes</code></li>
+    <li>审计记录主机、操作、结果与耗时，不含凭据内容</li>
+  </ul>
+
+  <h2>RBAC</h2>
+  <p>只有两级：<code>admin</code> 可写，<code>viewer</code> 只读。写接口在提取器层拒绝，不依赖每个 handler 自觉判断。SSH 凭据与部署操作仅 admin 可用。面板暂无用户管理界面，创建 viewer 需直接写库。</p>
+
+  <h2>审计</h2>
+  <ul>
+    <li>记录登录、实例变更、配置写入、启停、代理增删、凭据增删、部署与回滚</li>
+    <li><code>secret</code> 类型字段在写入前统一走 <code>secret::redact</code>；日志走 <code>redact_line</code> 脱敏</li>
+    <li>按 <code>retention_days</code> 由数据库保留策略自动清理，没有清空接口</li>
+  </ul>
+
+  <h2>部署安全清单</h2>
+  <ol>
+    <li><strong>面板默认只监听回环地址</strong>。要暴露到公网请用 Nginx / Caddy 反向代理 + HTTPS，并保持 <code>bind = 127.0.0.1:8787</code></li>
+    <li><strong>首次登录后立刻改密码</strong>，并删除 <code>data/admin.initial</code></li>
+    <li><strong>两个密钥文件不能丢也不能泄露</strong>：<code>data/master.key</code> 与 <code>data/jwt.key</code></li>
+    <li><strong>frp 自身的安全配置面板不代劳</strong>：<code>token</code> 强度、<code>transport.tls.force</code>、面板端口凭据仍需在 frp 配置里设好；配置诊断会给出提醒</li>
+    <li><strong>RBAC 只有两级</strong>（admin / viewer）。viewer 只读，写接口在提取器层拒绝</li>
+  </ol>
+
+  <h2>面板不代劳的 frp 配置</h2>
+  <p>面板管理的是「进程、配置、部署、观测」，不是 frp 的安全策略本身。请在实例配置中自行确认：</p>
+  <ul>
+    <li><code>auth.token</code> 使用足够长的随机口令</li>
+    <li>对外暴露时开启 <code>transport.tls.force</code></li>
+    <li>Admin API 面板端口设置强口令，避免只监听 <code>127.0.0.1</code> 导致远程部署时不可达</li>
+    <li>不要把 NFrp 专有段（<code>[nlink]</code>、<code>[vnet]</code>）下发给官方 frp（会直接退出）</li>
+  </ul>
+</section>
+
+<!-- ============ FAQ ============ -->
+<section class="page" id="page-faq" data-title="常见问题" hidden>
+  <h1>常见问题</h1>
+  <p class="lead">先看这里，再看对应的功能页。</p>
+
+  <h2>FrpPanel 与 NFrp 是什么关系？</h2>
+  <p>FrpPanel 是管理面板，NFrp（Rust-Frp）是它管理的 frp 实现之一。面板通过 path 依赖复用 <code>nfrp-common</code> 做配置解析与校验，这是「与 NFrp 同源」的具体体现，不是中间层。面板也管理官方 frp 的 <code>frps</code> / <code>frpc</code>。</p>
+
+  <h2>能管官方 frp 吗？</h2>
+  <p>能。驱动、能力探测与 DTO 都覆盖官方 frp；差异体现在能力位：官方 frps 没有 <code>/api/status</code>、<code>/api/healthz</code>，没有热重载，也没有流量字节。界面会灰化不支持的操作并说明原因。</p>
+
+  <h2>为什么官方 frp 的代理不能动态增删？</h2>
+  <p>官方 frpc 0.71.1 的 <code>PUT /api/config</code> 实测返回 200 但代理并未生效，<code>PUT /api/config/&#123;name&#125;</code> 返回 404。这是官方 API 的现状，不是面板的取舍。面板对官方 frpc 采用「配置文件改写 + 重启」。</p>
+
+  <h2>为什么改完配置要重启？</h2>
+  <p>官方 frps 没有热重载端点，NFrp 服务端也只靠每秒轮询配置文件的 mtime。面板会返回 <code>hot</code> / <code>restart_required</code> / <code>unsupported</code>，必要时按 <code>auto_restart_on_save</code> 自动优雅重启。</p>
+
+  <h2>为什么官方 frps 没有流量字节？</h2>
+  <p>官方 frps 的 <code>/api/v2/proxies</code> 只提供连接数与今日流量字段，面板将其能力位标为 <code>aggregated</code>；NFrp 才提供完整的字节计数（<code>full</code>）。</p>
+
+  <h2>SSH 部署失败了怎么排查？</h2>
+  <p>先看部署任务对应的失败步骤与 <code>remediation</code>。常见原因：sudo 需要密码、目标端口被占用、Admin API 不可从面板主机直连、上传的二进制架构不匹配、25 秒内服务未就绪。也可以按<a href="#/ssh-deploy">SSH 部署</a>页末尾的手工验证清单逐项核对。</p>
+
+  <h2>sudo 有密码行不行？</h2>
+  <p>不行。面板不做交互式提权，请配置 <code>NOPASSWD</code>，或使用 root 登录，或选择 <code>sudo -n</code> 模式。</p>
+
+  <h2>忘记管理员密码？</h2>
+  <pre><code>echo 你的新密码 | cargo run -p frp-panel -- --reset-admin-password --admin-username admin</code></pre>
+  <p>新密码从 stdin 读取，不会出现在进程列表里；成功后旧的 <code>data/admin.initial</code> 会被删除。此入口只适合本机管理员使用。</p>
+
+  <h2>master.key 丢了怎么办？</h2>
+  <p>已存凭据无法解密，需要重新录入 SSH / Admin API 凭据。数据库本身以及实例、审计记录不受影响。</p>
+
+  <h2>怎么创建 viewer 用户？</h2>
+  <p>目前没有用户管理界面，只有「至少一个管理员」的初始化。创建 viewer 需要直接向 <code>users</code> 表写入记录（角色 <code>viewer</code>）。</p>
+
+  <h2>审计日志能删吗？</h2>
+  <p>不能。审计日志只按 <code>retention_days</code> 由数据库保留策略自动清理，没有清空接口。</p>
+
+  <h2>支持 Windows 吗？</h2>
+  <p>面板后端可在 Windows / Linux 运行，本机二进制驱动在 Windows 上可用。SSH 远程部署的目标机要求 Linux，并具备 systemd 或 nohup。</p>
+
+  <h2>已知限制</h2>
+  <ol>
+    <li><strong>EmbeddedDriver 未实现</strong> — 预留 trait 与错误路径，调用返回明确提示</li>
+    <li><strong>官方 frp 的代理动态增删不可用</strong> — 面板改写配置文件后重启；0.71.1 实测 <code>PUT /api/config</code> 返回 200 但不生效</li>
+    <li><strong>官方 frps 没有热重载</strong> — 保存配置后需重启；可开启「保存后自动重启」</li>
+    <li><strong>官方 frps 不暴露流量字节</strong> — 监控只画连接数 / 在线态，能力位标为 <code>aggregated</code></li>
+    <li><strong>SSH 的 SFTP 依赖系统 OpenSSH</strong> — <code>russh 0.54</code> 不含 SFTP 实现，面板用 <code>sftp</code> 子进程传输；主机密钥仍由 russh 校验</li>
+    <li><strong>SSH 模式尚未在大量 Linux 发行版上做矩阵验证</strong> — 代码路径、单元测试与预检逻辑完备，开发环境覆盖有限</li>
+    <li><strong>ssh-agent 认证未实现</strong> — 返回明确错误并建议改用密码 / 私钥</li>
+    <li><strong>没有用户管理界面</strong> — 创建 viewer 需直接插入 <code>users</code> 表</li>
+    <li><strong>审计日志不可删除</strong> — 只按保留天数自动清理</li>
+    <li><strong>远程 Admin API 需要可从面板主机直连</strong> — 若 frp 面板端口只监听 <code>127.0.0.1</code>，预检会明确指出</li>
+    <li><strong>配置编辑会丢失注释</strong> — 保存时按 TOML 值序列化</li>
+  </ol>
+
+  <h2>许可证</h2>
+  <p>FrpPanel 以 <strong>GNU General Public License v3.0</strong>（<code>GPL-3.0-only</code>）发布。依赖项 <code>nfrp-common</code> 遵循 Apache-2.0，与 GPL-3.0 兼容。</p>
+</section>
+
+<div class="pager-slot" id="pagerSlot"></div>
+</div>
+</main>
+
+<script src="assets/app.js"></script>
+</body>
+</html>
