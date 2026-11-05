@@ -1,0 +1,173 @@
+/* ==========================================================================
+   设计令牌（唯一真源）
+   --------------------------------------------------------------------------
+   规范：简约 + 亚克力；单一低饱和主色；语义色只用于状态点与徽标。
+   所有组件只能引用这里的变量，禁止硬编码颜色。
+   ========================================================================== */
+
+:root {
+  /* ---- 中性色（浅色，偏暖白，降低压迫感） ---- */
+  --bg: #f9f9fb;
+  --bg-subtle: #f1f2f6;
+  --surface: #ffffff;
+  --surface-solid: #ffffff; /* backdrop-filter 降级用 */
+  --surface-raised: #ffffff;
+  --surface-sunken: #f5f6f9;
+  --border: transparent; /* 卡片不再用生硬描边，靠弥散阴影分层 */
+  --border-strong: #e9ebf0;
+  --divider: #f0f1f5;
+
+  /* ---- 文本（深灰 / 中灰，不用纯黑） ---- */
+  --text: #1f2937;
+  --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
+  --text-inverse: #ffffff;
+
+  /* ---- 主色（Bilibili 粉） ---- */
+  --primary: #fb7299;
+  --primary-hover: #fa5c88;
+  --primary-active: #f04577;
+  --primary-soft: rgba(251, 114, 153, 0.1);
+  --primary-soft-hover: rgba(251, 114, 153, 0.18);
+  --primary-border: rgba(251, 114, 153, 0.3);
+  --primary-shadow: 0 6px 18px rgba(251, 114, 153, 0.22);
+
+  /* ---- 语义色（只用于点/徽标/危险操作） ---- */
+  --success: #16a34a;
+  --success-soft: rgba(22, 163, 74, 0.1);
+  --warning: #d97706;
+  --warning-soft: rgba(217, 119, 6, 0.1);
+  --danger: #e5484d;
+  --danger-soft: rgba(229, 72, 77, 0.09);
+  --danger-hover: #cf3a3f;
+  --info: #0ea5a4;
+  --info-soft: rgba(14, 165, 164, 0.1);
+  --neutral-dot: #94a3b8;
+
+  /* ---- 亚克力效果：极轻柔的弥散阴影 ---- */
+  --acrylic-blur: blur(18px) saturate(140%);
+  --shadow-1: 0 2px 10px rgba(17, 24, 39, 0.03);
+  --shadow-2: 0 8px 30px rgba(0, 0, 0, 0.04);
+  --shadow-pop: 0 18px 46px rgba(17, 24, 39, 0.1);
+
+  /* ---- 圆角（统一再收敛一档） ---- */
+  --radius-card: 8px;
+  --radius-control: 4px;
+  --radius-pill: 8px;
+
+  /* ---- 间距（4 的倍数） ---- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ---- 排版 ---- */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "JetBrains Mono", "Cascadia Code", Consolas,
+    "Liberation Mono", monospace;
+  --fs-title: 26px;
+  --fs-section: 16px;
+  --fs-body: 14px;
+  --fs-aux: 12px;
+  --fs-log: 13px;
+  --lh-tight: 1.4;
+  --lh-base: 1.6;
+
+  /* ---- 布局 ---- */
+  --sidebar-w: 240px;
+  --content-max: 1320px;
+  --topbar-h: 64px;
+
+  /* ---- 动效 ---- */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 160ms;
+  --dur-slow: 180ms;
+}
+
+/* ==========================================================================
+   深色主题
+   ========================================================================== */
+
+[data-theme='dark'] {
+  --bg: #14161a;
+  --bg-subtle: #191c21;
+  --surface: #1b1e23;
+  --surface-solid: #1b1e23;
+  --surface-raised: #22262c;
+  --surface-sunken: #17191d;
+  --border: transparent;
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --divider: rgba(255, 255, 255, 0.06);
+
+  --text: #e9eaee;
+  --text-secondary: #a1a8b3;
+  --text-tertiary: #787f8b;
+  --text-inverse: #14161a;
+
+  --primary: #ff8fab;
+  --primary-hover: #ffa2ba;
+  --primary-active: #f97c9b;
+  --primary-soft: rgba(255, 143, 171, 0.14);
+  --primary-soft-hover: rgba(255, 143, 171, 0.22);
+  --primary-border: rgba(255, 143, 171, 0.36);
+  --primary-shadow: 0 6px 18px rgba(255, 143, 171, 0.18);
+
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.12);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.12);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.12);
+  --danger-hover: #ef5350;
+  --info: #2dd4bf;
+  --info-soft: rgba(45, 212, 191, 0.12);
+  --neutral-dot: #64748b;
+
+  --shadow-1: 0 2px 10px rgba(0, 0, 0, 0.22);
+  --shadow-2: 0 8px 30px rgba(0, 0, 0, 0.3);
+  --shadow-pop: 0 18px 46px rgba(0, 0, 0, 0.42);
+}
+
+/* ==========================================================================
+   降级：不支持 backdrop-filter 时用不透明背景，保证可读性
+   ========================================================================== */
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --surface: #ffffff;
+    --surface-raised: #ffffff;
+    --surface-sunken: #f5f6f9;
+  }
+  [data-theme='dark'] {
+    --surface: #1b1e23;
+    --surface-raised: #22262c;
+    --surface-sunken: #17191d;
+  }
+  /* 同时把模糊从卡片上撤掉，避免无效属性堆积 */
+  .acrylic {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+/* 尊重"减少动效"偏好 */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-base: 0ms;
+    --dur-slow: 0ms;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

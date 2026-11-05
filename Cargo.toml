@@ -1,0 +1,81 @@
+[workspace]
+members = ["backend"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+license = "Apache-2.0"
+
+[workspace.dependencies]
+# HTTP 框架与中间件
+axum = { version = "0.8", features = ["macros", "json"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace", "fs", "compression-gzip", "limit"] }
+hyper = "1"
+
+# 异步运行时
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# 序列化
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# 存储
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "sqlite",
+    "chrono",
+    "migrate",
+    "uuid",
+    "macros",
+] }
+
+# 认证与加密
+jsonwebtoken = "9"
+argon2 = "0.5"
+aes-gcm = "0.10"
+rand = "0.8"
+sha2 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+subtle = "2"
+
+# HTTP 客户端（访问 frp Admin API / Prometheus）
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+    "charset",
+    "stream",
+] }
+
+# SSH：russh 0.54 已内置密钥解析（russh-keys 合并入主 crate），用 ring 后端避免 aws-lc-rs 的 C 依赖
+russh = { version = "0.54", default-features = false, features = ["ring", "rsa"] }
+
+# 进程管理
+sysinfo = "0.33"
+
+# 杂项
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+glob = "0.3"
+url = "2"
+indexmap = { version = "2", features = ["serde"] }
+hostname = "0.4"
+
+# 复用 NFrp 的配置解析 / 校验（同源，非黑盒中间层）
+nfrp-common = { path = "E:/项目/RustFrp/NFrp/common" }
+
+[profile.release]
+opt-level = "s"
+lto = "thin"
+codegen-units = 4

@@ -1,0 +1,35 @@
+# 本地敏感数据与凭据（memory/ 内含 GitHub Token，切勿提交）
+memory/
+data/
+run/
+
+# 参考仓库 / 本地沙箱 / 演示数据（不入库）
+_ref_official/
+_ref_rustfrp/
+sandbox/
+demo/
+
+# 构建产物与依赖
+target/
+build/
+dist/
+frontend/node_modules/
+frontend/dist/
+__pycache__/
+*.pyc
+
+# 可执行文件 / 快捷方式
+*.exe
+*.lnk
+
+# 本地数据库与密钥
+*.db
+*.db-shm
+*.db-wal
+*.key
+
+# 编辑器/系统文件
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

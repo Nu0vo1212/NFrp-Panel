@@ -1,0 +1,242 @@
+/* 基础样式与亚克力原语 */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-base);
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: background-color var(--dur-base) var(--ease),
+    color var(--dur-base) var(--ease);
+}
+
+/* 背景：极轻的粉色晕染 + 细网格，给页面一点工程感，不抢内容 */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background-image: radial-gradient(
+      1200px 620px at 10% -12%,
+      rgba(251, 114, 153, 0.07),
+      transparent 60%
+    ),
+    radial-gradient(900px 520px at 100% 0%, rgba(255, 183, 197, 0.08), transparent 55%),
+    linear-gradient(rgba(17, 24, 39, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17, 24, 39, 0.022) 1px, transparent 1px);
+  background-size: auto, auto, 32px 32px, 32px 32px;
+}
+
+[data-theme='dark'] body::before {
+  background-image: radial-gradient(
+      1200px 620px at 10% -12%,
+      rgba(255, 143, 171, 0.08),
+      transparent 60%
+    ),
+    radial-gradient(900px 520px at 100% 0%, rgba(255, 143, 171, 0.05), transparent 55%),
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: auto, auto, 32px 32px, 32px 32px;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  line-height: var(--lh-tight);
+}
+
+p {
+  margin: 0;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+code,
+pre,
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-log);
+}
+
+/* --------------------------------------------------------------------------
+   亚克力卡片
+   -------------------------------------------------------------------------- */
+
+.acrylic {
+  background: var(--surface);
+  backdrop-filter: var(--acrylic-blur);
+  -webkit-backdrop-filter: var(--acrylic-blur);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-2);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+
+.acrylic--raised {
+  background: var(--surface-raised);
+}
+
+.acrylic--flat {
+  box-shadow: var(--shadow-1);
+}
+
+/* 页面级布局：给内容留足呼吸空间 */
+.page {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-8) var(--space-12);
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin: var(--space-2) 0 var(--space-8);
+}
+
+.page-title {
+  font-size: var(--fs-title);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+/* 副标题走等宽，像终端里的说明行 */
+.page-subtitle {
+  margin-top: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.01em;
+  color: var(--text-tertiary);
+}
+
+.section-title {
+  font-size: var(--fs-section);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.aux {
+  font-size: var(--fs-aux);
+  color: var(--text-secondary);
+}
+
+.muted {
+  color: var(--text-tertiary);
+}
+
+/* 数字列右对齐 / 等宽对齐，避免表格抖动 */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* 表格与键值表：表头 / 标签走等宽 + 字距，强化对齐感 */
+.table th {
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+}
+
+.table td {
+  font-variant-numeric: tabular-nums;
+}
+
+.kv dt {
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+}
+
+/* 状态点 */
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--neutral-dot);
+}
+.dot--success {
+  background: var(--success);
+}
+.dot--warning {
+  background: var(--warning);
+}
+.dot--danger {
+  background: var(--danger);
+}
+.dot--info {
+  background: var(--info);
+}
+.dot--pulse {
+  position: relative;
+}
+.dot--pulse::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  opacity: 0.35;
+  animation: dot-pulse 2s var(--ease) infinite;
+}
+@keyframes dot-pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.4;
+  }
+  70% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--radius-pill);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 焦点可见性（键盘可达） */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
