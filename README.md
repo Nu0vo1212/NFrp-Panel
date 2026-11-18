@@ -5,7 +5,7 @@
 </div>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.0.1-FB7299" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.2.0-FB7299" alt="Version">
   <img src="https://img.shields.io/badge/protocol-frp%20v1%20%2F%20v2-orange" alt="Protocol">
   <img src="https://img.shields.io/badge/Rust-1.80%2B-dea584" alt="Rust">
   <img src="https://img.shields.io/badge/Vue-3-42b883" alt="Vue">
@@ -19,7 +19,8 @@ FrpPanel 是面向 **[NFrp（Rust-Frp）](https://github.com/Nu0vo1212/Rust-Frp)
 
 后端是 Rust（Axum + SQLite），前端是 Vue 3 + TypeScript。默认**本机二进制模式**：面板直接接管 frp 进程、配置文件与 Admin API；也可以选择 **SSH 远程部署**，或者只把一台已经在跑的实例通过 **Admin API** 纳管起来。面板不内嵌 Go 运行时，也不做黑盒中间层——每一个动作都能在日志里找到对应命令。
 
-> 首个公开版本 `v0.0.1`：实例管理、SSH 部署、监控、审计与浅色 / 深色主题已经可用。
+> `v0.2.0`：在 `v0.0.1` 的实例管理与 SSH 部署之上，补齐了多用户 RBAC、告警通知、实时日志跟随、
+> 分组与批量操作、配置导入导出，并把令牌与会话安全收紧（撤销、轮换、登录锁定）。
 > 架构与 API 契约见 [`docs/`](docs/)。
 
 ## 为什么需要它
@@ -49,6 +50,8 @@ FrpPanel 把差异收敛成一套 **driver trait + 能力探测**，前端只认
 - 支持 NFrp 与官方 frp 自动探测，版本、能力位、驱动类型一目了然
 - 启动、停止、重启、配置保存与诊断，全部有明确的成功 / 失败反馈
 - 列表先读本地记录秒开，再在后台逐个探测连接状态，不阻塞打开面板
+- 按标签分组查看；勾选多个实例批量启动 / 停止 / 重启 / 删除
+- 实例配置一键导出为 JSON（**不含任何口令**），导入时同名实例自动跳过
 
 ### 部署与运维
 
@@ -62,6 +65,8 @@ FrpPanel 把差异收敛成一套 **driver trait + 能力探测**，前端只认
 
 - 连接数、流量字节等指标采样落库，趋势图按时间范围查询
 - 实例状态、驱动能力、部署进度集中展示
+- 日志页支持**实时跟随**（SSE 增量推送），只推新增行，轮转后自动重新同步
+- 指标阈值告警：超过阈值、部署失败、实例异常时推送到 Webhook
 - 审计日志记录登录、实例变更、部署与配置操作，支持按保留天数自动清理
 
 ### 界面
@@ -78,7 +83,10 @@ FrpPanel 把差异收敛成一套 **driver trait + 能力探测**，前端只认
 - 审计与日志统一走 `redact_line` 脱敏
 - SSH 只执行白名单模板命令，路径参数再过字符白名单
 - 主机指纹首次确认、变更拒绝；没有「关闭主机密钥校验」的开关
-- RBAC 两级：`admin` 可写，`viewer` 只读，写接口在提取器层拒绝
+- 访问 frp Admin API 一律校验证书，自签证书需显式配置 `FRP_PANEL_CA_FILE`，不存在「跳过校验」开关
+- RBAC 两级：`admin` 可写、`viewer` 只读；用户管理支持创建、改角色、重置口令、删除
+- 令牌带 `jti` 与版本号：退出登录、改密、降权都会让旧 access / refresh 立即失效
+- 登录失败次数达到阈值自动锁定；refresh token 每次刷新即轮换
 
 ## 架构
 
