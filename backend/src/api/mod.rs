@@ -17,6 +17,8 @@ pub mod instances;
 pub mod proxies;
 pub mod settings;
 pub mod ssh;
+pub mod users;
+pub mod alerts;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -74,10 +76,13 @@ impl FromRequestParts<Arc<AppState>> for AuthUser {
         let claims = state.auth.verify(token, "access")?;
         let id = uuid::Uuid::parse_str(&claims.sub)
             .map_err(|_| ApiError::Unauthorized("token 主体非法".into()))?;
+        // 回查数据库：令牌版本匹配 + 未被撤销 + 角色以 DB 为准
+        // （用户被降权/删除/改密/登出后，旧 access token 立即失效）
+        let (username, role) = state.auth.authorize(&claims).await?;
         Ok(AuthUser {
             id,
-            username: claims.username,
-            role: Role::parse(&claims.role),
+            username,
+            role,
         })
     }
 }
