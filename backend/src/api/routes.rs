@@ -10,7 +10,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::state::AppState;
 
-use super::{audit, auth, config, credentials, deploy, instances, logs, metrics, proxies, settings, ssh};
+use super::{alerts, audit, auth, config, credentials, deploy, instances, logs, metrics, proxies, settings, ssh, users};
 
 pub fn build(state: Arc<AppState>) -> Router {
     let api = api_router(state.clone());
@@ -84,6 +84,8 @@ fn api_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/auth/password", post(auth::change_password))
         // ---- 实例 ----
         .route("/instances", get(instances::list).post(instances::create))
+        .route("/instances/export", get(instances::export))
+        .route("/instances/import", post(instances::import))
         .route(
             "/instances/{id}",
             get(instances::get)
@@ -126,6 +128,7 @@ fn api_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/instances/{id}/visitors", get(proxies::list_visitors))
         // ---- 日志 ----
         .route("/instances/{id}/logs", get(logs::list))
+        .route("/instances/{id}/logs/stream", get(logs::stream))
         .route("/instances/{id}/logs/download", get(logs::download))
         // ---- 监控 ----
         .route("/instances/{id}/metrics", get(metrics::history))
@@ -162,6 +165,15 @@ fn api_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         // ---- 审计 ----
         .route("/audit-logs", get(audit::list))
         .route("/audit-logs/export", get(audit::export))
+        // ---- 用户管理（仅 admin） ----
+        .route("/users", get(users::list).post(users::create))
+        .route("/users/{id}", axum::routing::patch(users::update).delete(users::remove))
+        // ---- 告警通知 ----
+        .route("/alerts/webhooks", get(alerts::list_webhooks).post(alerts::create_webhook))
+        .route("/alerts/webhooks/test", post(alerts::test_webhook))
+        .route("/alerts/webhooks/{id}", delete(alerts::delete_webhook))
+        .route("/alerts/rules", get(alerts::list_rules).post(alerts::create_rule))
+        .route("/alerts/rules/{id}", delete(alerts::delete_rule))
         // ---- 设置 ----
         .route("/settings", get(settings::get_settings).patch(settings::update_settings))
         .route("/settings/catalog", get(settings::catalog))
