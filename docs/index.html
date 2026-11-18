@@ -26,7 +26,7 @@
   <a class="brand" href="#/overview">
     <img class="brand-mark" src="assets/icon-128.png" alt="FrpPanel" width="26" height="26">
     <span>FrpPanel</span>
-    <span class="brand-sub">0.0.1</span>
+    <span class="brand-sub">0.2.0</span>
   </a>
 
   <div class="header-spacer"></div>
@@ -60,6 +60,7 @@
     <a class="nav-link" href="#/instances"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><path d="M6 6h.01M6 18h.01"/></svg><span>实例管理</span></a>
     <a class="nav-link" href="#/ssh-deploy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4M7 8l2 2-2 2M13 12h4"/></svg><span>SSH 部署</span></a>
     <a class="nav-link" href="#/drivers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg><span>驱动与能力探测</span></a>
+    <a class="nav-link" href="#/whats-new"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M3 12h3M18 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/><circle cx="12" cy="12" r="3.5"/></svg><span>0.2.0 新特性</span></a>
   </div>
 
   <div class="nav-group">
@@ -1063,6 +1064,68 @@ frps -v          →  0.71.0                 （frp 兼容版本）</code></pre>
   </ul>
 </section>
 
+<!-- ============ What's new in 0.2.0 ============ -->
+<section class="page" id="page-whats-new" data-title="0.2.0 新特性" hidden>
+  <h1>0.2.0 新特性</h1>
+  <p class="lead">这一版补齐了「敢不敢交给别人用」和「实例多了好不好管」两件事，同时把上一版留下的几处安全欠账清掉。</p>
+
+  <h2>多用户与权限</h2>
+  <p>左侧新增「用户」页，只有 <code>admin</code> 可见。支持创建用户、切换 admin / viewer、重置口令、删除用户。后台强制保留至少一个 admin——删自己、把最后一个 admin 降级都会被拒绝。</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>接口</th><th>方法</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td><code>/api/users</code></td><td>GET / POST</td><td>列出用户 / 创建用户（用户名 + 口令 + 角色）</td></tr>
+        <tr><td><code>/api/users/:id</code></td><td>PATCH / DELETE</td><td>改角色或重置口令 / 删除用户</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><code>viewer</code> 登录后能看到全部只读页面，所有写接口仍然在提取器层返回 <code>403</code>，前端也会隐藏对应按钮——两层都拦，不靠前端自觉。</p>
+
+  <h2>告警通知</h2>
+  <p>「告警」页配置 Webhook 与阈值规则：</p>
+  <ul>
+    <li><strong>Webhook</strong>：名称、URL、订阅事件（实例异常 / 部署失败 / 指标超阈值），支持「发送测试」立刻验证连通性</li>
+    <li><strong>阈值规则</strong>：按实例选择指标、比较符、阈值与统计窗口；采样任务每轮检查，命中后推送并按冷却时间抑制重复</li>
+    <li>推送内容是 JSON（<code>event</code> / <code>title</code> / <code>body</code> / <code>ts</code> / <code>source</code>），并带 <code>X-Nfrp-Event</code> 头，接收端可据此分流</li>
+  </ul>
+  <p>部署失败的通知直接接在部署任务收尾处：失败那一刻就发，不需要等下一次轮询。</p>
+
+  <h2>实时日志跟随</h2>
+  <p>日志页新增「实时」按钮。开启后走 <code>GET /api/instances/:id/logs/stream</code>（SSE），后端每 1.5 秒 tail 一次日志，只把新增行推给前端；前端自动滚到底部。判定增量用「行数 + 最后一行内容」指纹，日志轮转或被清空后会自动从头重新同步，不会错位。</p>
+  <div class="callout">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+    <div>
+      <strong>为什么不是 WebSocket</strong>
+      <p>日志是单向增量流，SSE 足够且能复用现有 <code>Authorization</code> 头的 fetch 流式读取方式；浏览器原生 EventSource 不能带自定义头，因此前端用 fetch + ReadableStream 解析 SSE 帧。</p>
+    </div>
+  </div>
+
+  <h2>分组与批量操作</h2>
+  <p>实例列表支持按标签分组（取每个实例的第一个标签，没有标签归到「未分组」），并支持勾选多个实例批量启动 / 停止 / 重启 / 删除。批量操作串行执行，避免同时打爆目标主机；结束后汇总成功与失败数量。删除有二次确认，且只移除面板记录，不会卸载主机上的二进制。</p>
+
+  <h2>配置导入导出</h2>
+  <ul>
+    <li><code>GET /api/instances/export</code> 导出全部实例配置为 JSON，<strong>不包含任何口令</strong>（Admin API 密码、SSH 凭据都不导出）</li>
+    <li><code>POST /api/instances/import</code> 导入：同名实例一律跳过，不会覆盖线上配置；导入结果分「新增 / 跳过 / 失败」三类返回</li>
+  </ul>
+  <p>适合把一套测试环境的实例结构搬到另一台面板，或者做配置留档。</p>
+
+  <h2>安全加固</h2>
+  <ul>
+    <li>移除四处 <code>danger_accept_invalid_certs(true)</code>，出站请求默认严格校验证书；自签场景用 <code>FRP_PANEL_CA_FILE</code> 指定 CA</li>
+    <li>令牌带版本号：退出、改密、降权立即失效；refresh 每次轮换</li>
+    <li>登录失败计数与临时锁定</li>
+    <li><code>AuthUser</code> 提取器回查数据库拿角色，不再信任 JWT 里的 <code>role</code> 字段</li>
+  </ul>
+
+  <h2>依赖升级</h2>
+  <ul>
+    <li><code>russh</code> 0.54 → <strong>0.60.3</strong>（SSH 传输层漏洞修复，API 兼容，SSH 相关测试全过）</li>
+    <li><code>echarts</code> 5.5 → <strong>6.1</strong>（按需引入方式不变，图表回归正常）</li>
+  </ul>
+</section>
+
 <!-- ============ Security ============ -->
 <section class="page" id="page-security" data-title="安全说明" hidden>
   <h1>安全说明</h1>
@@ -1095,8 +1158,24 @@ frps -v          →  0.71.0                 （frp 兼容版本）</code></pre>
     <li>审计记录主机、操作、结果与耗时，不含凭据内容</li>
   </ul>
 
-  <h2>RBAC</h2>
-  <p>只有两级：<code>admin</code> 可写，<code>viewer</code> 只读。写接口在提取器层拒绝，不依赖每个 handler 自觉判断。SSH 凭据与部署操作仅 admin 可用。面板暂无用户管理界面，创建 viewer 需直接写库。</p>
+  <h2>RBAC 与用户管理</h2>
+  <p>两级角色：<code>admin</code> 可写，<code>viewer</code> 只读。写接口在提取器层拒绝，不依赖每个 handler 自觉判断。SSH 凭据与部署操作仅 admin 可用。</p>
+  <p>「用户」页支持创建用户、修改角色、重置口令、删除用户。系统始终保留至少一个 admin：删除自己、把最后一个 admin 降级都会被拒绝（<code>409</code>）。</p>
+
+  <h2>会话与令牌</h2>
+  <ul>
+    <li>access / refresh token 都带 <code>jti</code> 与用户级 <code>token_version</code></li>
+    <li>退出登录、修改口令、被降权都会让该用户的旧 token 立即失效（服务端回查数据库，不信 JWT 里的 role）</li>
+    <li>refresh 每次使用即轮换，旧 refresh 立即作废</li>
+    <li>登录失败计数达到阈值后账号临时锁定，锁定状态写入数据库，重启面板不清零</li>
+  </ul>
+
+  <h2>出站 TLS</h2>
+  <ul>
+    <li>访问 frp Admin API、下载二进制、部署预检的所有 HTTP 客户端<strong>一律校验证书</strong>，代码里已无 <code>danger_accept_invalid_certs</code></li>
+    <li>自签证书场景请把 CA 的 PEM 路径写进环境变量 <code>FRP_PANEL_CA_FILE</code>，客户端会同时信任系统 CA 与这份 CA</li>
+    <li>不提供「跳过证书校验」的开关，避免一次配置把中间人风险永久留在系统里</li>
+  </ul>
 
   <h2>审计</h2>
   <ul>
@@ -1111,7 +1190,7 @@ frps -v          →  0.71.0                 （frp 兼容版本）</code></pre>
     <li><strong>首次登录后立刻改密码</strong>，并删除 <code>data/admin.initial</code></li>
     <li><strong>两个密钥文件不能丢也不能泄露</strong>：<code>data/master.key</code> 与 <code>data/jwt.key</code></li>
     <li><strong>frp 自身的安全配置面板不代劳</strong>：<code>token</code> 强度、<code>transport.tls.force</code>、面板端口凭据仍需在 frp 配置里设好；配置诊断会给出提醒</li>
-    <li><strong>RBAC 只有两级</strong>（admin / viewer）。viewer 只读，写接口在提取器层拒绝</li>
+    <li><strong>RBAC 只有两级</strong>（admin / viewer）。viewer 只读，写接口在提取器层拒绝；多用户场景请为每人单独建账号，不要共用 admin</li>
   </ol>
 
   <h2>面板不代劳的 frp 配置</h2>
