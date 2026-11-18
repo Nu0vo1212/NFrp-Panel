@@ -6,14 +6,18 @@ import type {
   BackupInfo,
   ConfigDoc,
   ConfigWriteResult,
+  AlertRuleView,
+  CreateUserRequest,
   CredentialSummary,
   DeployPreflightReport,
   DeployState,
   DeployTask,
   HealthReport,
   HostKeyRecord,
+  ImportReport,
   InstanceCreateRequest,
   InstanceDetail,
+  InstanceExport,
   InstanceStatus,
   InstanceSummary,
   InstanceUpdateRequest,
@@ -32,7 +36,10 @@ import type {
   SshTestResult,
   TaskCreated,
   TokenPair,
+  UpdateUserRequest,
+  UserSummary,
   ValidationReport,
+  WebhookView,
 } from './types'
 
 // ---- 认证 ----
@@ -78,6 +85,14 @@ export const instanceApi = {
     http.get(`/instances/${id}/capabilities`).then((r) => r.data),
   diagnose: (id: string) =>
     http.get(`/instances/${id}/capabilities/diagnose`).then((r) => r.data),
+
+  /** 导出全部实例配置（不含口令）。 */
+  exportConfig: () =>
+    http.get<InstanceExport>('/instances/export').then((r) => r.data),
+
+  /** 导入实例配置，同名实例跳过。 */
+  importConfig: (items: unknown[]) =>
+    http.post<ImportReport>('/instances/import', { version: 1, items }).then((r) => r.data),
 }
 
 // ---- 配置 ----
@@ -124,6 +139,60 @@ export const logApi = {
     http.get<LogPage>(`/instances/${id}/logs`, { params }).then((r) => r.data),
   downloadUrl: (id: string, limit = 2000) =>
     `/api/instances/${id}/logs/download?limit=${limit}`,
+
+  /**
+   * 实时日志流（SSE）：后端每 1.5 秒 tail 一次，只推增量。
+   * 返回取消函数，组件卸载时务必调用。
+   */
+  stream: (
+    id: string,
+    handlers: {
+      onLines: (lines: { raw: string; level: string }[], reset: boolean) => void
+      onError?: (e: unknown) => void
+    },
+  ): (() => void) => {
+    const ctrl = new AbortController()
+    const token = sessionStorage.getItem('frppanel.token') ?? ''
+    fetch(`/api/instances/${id}/logs/stream`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal: ctrl.signal,
+    })
+      .then(async (resp) => {
+        if (!resp.ok || !resp.body) throw new Error(`日志流连接失败（HTTP ${resp.status}）`)
+        const reader = resp.body.getReader()
+        const decoder = new TextDecoder()
+        let buffer = ''
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buffer += decoder.decode(value, { stream: true })
+          const frames = buffer.split('\n\n')
+          buffer = frames.pop() ?? ''
+          for (const frame of frames) {
+            let event = 'message'
+            const dataLines: string[] = []
+            for (const line of frame.split('\n')) {
+              if (line.startsWith('event:')) event = line.slice(6).trim()
+              else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim())
+            }
+            if (event !== 'log' || !dataLines.length) continue
+            try {
+              const payload = JSON.parse(dataLines.join('\n')) as {
+                lines?: { raw: string; level: string }[]
+                reset?: boolean
+              }
+              handlers.onLines(payload.lines ?? [], Boolean(payload.reset))
+            } catch {
+              continue
+            }
+          }
+        }
+      })
+      .catch((e) => {
+        if ((e as Error).name !== 'AbortError') handlers.onError?.(e)
+      })
+    return () => ctrl.abort()
+  },
 }
 
 // ---- 监控 ----
@@ -280,6 +349,35 @@ export const settingsApi = {
     http
       .get<{ entries: unknown[]; note: string }>('/settings/catalog')
       .then((r) => r.data),
+}
+
+// ---- 用户管理 ----
+export const userApi = {
+  list: () => http.get<UserSummary[]>('/users').then((r) => r.data),
+  create: (body: CreateUserRequest) =>
+    http.post<UserSummary>('/users', body).then((r) => r.data),
+  update: (id: string, body: UpdateUserRequest) =>
+    http.patch<UserSummary>(`/users/${id}`, body).then((r) => r.data),
+  remove: (id: string) => http.delete(`/users/${id}`).then(() => undefined),
+}
+
+// ---- 告警通知 ----
+export const alertApi = {
+  webhooks: () => http.get<WebhookView[]>('/alerts/webhooks').then((r) => r.data),
+  createWebhook: (body: { name: string; url: string; events: string[] }) =>
+    http.post<WebhookView>('/alerts/webhooks', body).then((r) => r.data),
+  deleteWebhook: (id: string) => http.delete(`/alerts/webhooks/${id}`).then(() => undefined),
+  testWebhook: (body: { name: string; url: string; events: string[] }) =>
+    http.post<{ ok: boolean }>('/alerts/webhooks/test', body).then((r) => r.data),
+  rules: () => http.get<AlertRuleView[]>('/alerts/rules').then((r) => r.data),
+  createRule: (body: {
+    instance_id: string
+    metric: string
+    op: string
+    threshold: number
+    window_min: number
+  }) => http.post<AlertRuleView>('/alerts/rules', body).then((r) => r.data),
+  deleteRule: (id: string) => http.delete(`/alerts/rules/${id}`).then(() => undefined),
 }
 
 export type { PreflightItem, DeployState }
