@@ -31,6 +31,8 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { name: 'instances', label: '实例', path: '/instances', icon: 'server' },
+  { name: 'alerts', label: '告警通知', path: '/alerts', icon: 'activity' },
+  { name: 'users', label: '用户管理', path: '/users', icon: 'users' },
   { name: 'audit', label: '审计日志', path: '/audit', icon: 'audit' },
   { name: 'settings', label: '设置', path: '/settings', icon: 'settings' },
 ]
@@ -44,6 +46,8 @@ const pageTitle = computed(() => {
     instances: '实例',
     instance: '实例详情',
     'instance-new': '新建实例',
+    alerts: '告警通知',
+    users: '用户管理',
     audit: '审计日志',
     settings: '设置',
   }
