@@ -13,6 +13,10 @@ pub mod action {
     pub const AUTH_LOGIN: &str = "auth.login";
     pub const AUTH_LOGIN_FAILED: &str = "auth.login_failed";
     pub const AUTH_LOGOUT: &str = "auth.logout";
+    pub const USER_CREATE: &str = "user.create";
+    pub const USER_DELETE: &str = "user.delete";
+    pub const USER_ROLE_CHANGE: &str = "user.role_change";
+    pub const USER_PASSWORD_RESET: &str = "user.password_reset";
     pub const INSTANCE_CREATE: &str = "instance.create";
     pub const INSTANCE_UPDATE: &str = "instance.update";
     pub const INSTANCE_DELETE: &str = "instance.delete";
@@ -33,6 +37,10 @@ pub mod action {
     pub const DEPLOY_RUN: &str = "deploy.run";
     pub const DEPLOY_ROLLBACK: &str = "deploy.rollback";
     pub const SETTINGS_UPDATE: &str = "settings.update";
+    pub const ALERT_WEBHOOK_CREATE: &str = "alert.webhook_create";
+    pub const ALERT_WEBHOOK_DELETE: &str = "alert.webhook_delete";
+    pub const ALERT_RULE_CREATE: &str = "alert.rule_create";
+    pub const ALERT_RULE_DELETE: &str = "alert.rule_delete";
 }
 
 /// 审计写入器。
