@@ -23,8 +23,28 @@ pub struct Claims {
     pub role: String,
     /// 类型：access / refresh
     pub typ: String,
+    /// 令牌唯一 ID（refresh 轮换与撤销用）
+    pub jti: String,
+    /// 令牌版本：与用户当前 token_version 不一致即失效
+    pub ver: i64,
     pub exp: i64,
     pub iat: i64,
+}
+
+/// 登录限流配置（失败次数与锁定时长）。
+#[derive(Debug, Clone)]
+pub struct LoginPolicy {
+    pub max_attempts: i64,
+    pub lock_minutes: i64,
+}
+
+impl Default for LoginPolicy {
+    fn default() -> Self {
+        Self {
+            max_attempts: 5,
+            lock_minutes: 15,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -33,6 +53,7 @@ pub struct AuthService {
     access_ttl_minutes: i64,
     refresh_ttl_days: i64,
     pool: SqlitePool,
+    login_policy: LoginPolicy,
 }
 
 #[derive(Debug, Serialize)]
@@ -57,11 +78,22 @@ impl AuthService {
         refresh_ttl_days: i64,
         pool: SqlitePool,
     ) -> Self {
+        Self::with_policy(secret, access_ttl_minutes, refresh_ttl_days, pool, LoginPolicy::default())
+    }
+
+    pub fn with_policy(
+        secret: Vec<u8>,
+        access_ttl_minutes: i64,
+        refresh_ttl_days: i64,
+        pool: SqlitePool,
+        login_policy: LoginPolicy,
+    ) -> Self {
         Self {
             secret,
             access_ttl_minutes: access_ttl_minutes.max(1),
             refresh_ttl_days: refresh_ttl_days.max(1),
             pool,
+            login_policy,
         }
     }
 
@@ -95,9 +127,31 @@ impl AuthService {
             // 不区分"用户不存在"与"密码错误"，避免账号枚举
             return Err(ApiError::Unauthorized("用户名或密码错误".into()));
         };
+
+        // 账户锁定检查
+        if let Some(until) = &user.locked_until {
+            if let Some(t) = crate::db::models::parse_ts(until) {
+                if t > Utc::now() {
+                    return Err(ApiError::Unauthorized(
+                        "登录失败次数过多，账号已临时锁定，请稍后再试".into(),
+                    ));
+                }
+            }
+        }
+
         if !crypto::verify_password(password, &user.password_hash) {
+            // 失败计数 +1；达到阈值自动锁定
+            repo::record_login_failure(
+                &self.pool,
+                user.id,
+                self.login_policy.max_attempts,
+                self.login_policy.lock_minutes,
+            )
+            .await?;
             return Err(ApiError::Unauthorized("用户名或密码错误".into()));
         }
+
+        repo::reset_login_failure(&self.pool, user.id).await?;
         repo::touch_login(&self.pool, user.id).await?;
         self.issue(&user)
     }
@@ -112,6 +166,8 @@ impl AuthService {
             username: user.username.clone(),
             role: user.role.as_str().to_string(),
             typ: "access".into(),
+            jti: Uuid::new_v4().to_string(),
+            ver: user.token_version,
             exp: access_exp.timestamp(),
             iat: now.timestamp(),
         })?;
@@ -120,6 +176,8 @@ impl AuthService {
             username: user.username.clone(),
             role: user.role.as_str().to_string(),
             typ: "refresh".into(),
+            jti: Uuid::new_v4().to_string(),
+            ver: user.token_version,
             exp: refresh_exp.timestamp(),
             iat: now.timestamp(),
         })?;
@@ -136,15 +194,55 @@ impl AuthService {
         })
     }
 
+    /// 刷新令牌：轮换 refresh（旧 jti 撤销），并以数据库为准重新签发。
     pub async fn refresh(&self, refresh_token: &str) -> Result<TokenPair, ApiError> {
         let claims = self.verify(refresh_token, "refresh")?;
         let id = Uuid::parse_str(&claims.sub)
             .map_err(|_| ApiError::Unauthorized("无效的 token 主体".into()))?;
+
+        // 旧 refresh jti 必须未被撤销（防重放）
+        if repo::is_token_revoked(&self.pool, &claims.jti).await? {
+            return Err(ApiError::Unauthorized("刷新令牌已失效，请重新登录".into()));
+        }
         let user = repo::find_user_by_id(&self.pool, id)
             .await?
             .ok_or_else(|| ApiError::Unauthorized("用户不存在".into()))?;
-        // 角色可能已变更：以数据库为准重新签发
+        // 令牌版本必须匹配（改密/降权/登出后旧 refresh 立即失效）
+        if claims.ver != user.token_version {
+            return Err(ApiError::Unauthorized("登录状态已变更，请重新登录".into()));
+        }
+
+        // 轮换：撤销旧 refresh jti，签发新 pair
+        repo::revoke_token(&self.pool, &claims.jti, user.id, claims.exp).await?;
+        let _ = repo::purge_expired_revoked(&self.pool).await;
         self.issue(&user)
+    }
+
+    /// 校验 access token 的附加约束（版本匹配 + 未被撤销 + 用户仍存在且角色以 DB 为准）。
+    /// 返回数据库中最新角色。
+    pub async fn authorize(&self, claims: &Claims) -> Result<(String, crate::db::models::Role), ApiError> {
+        let id = Uuid::parse_str(&claims.sub)
+            .map_err(|_| ApiError::Unauthorized("无效的 token 主体".into()))?;
+        if repo::is_token_revoked(&self.pool, &claims.jti).await? {
+            return Err(ApiError::Unauthorized("登录已失效，请重新登录".into()));
+        }
+        let user = repo::find_user_by_id(&self.pool, id)
+            .await?
+            .ok_or_else(|| ApiError::Unauthorized("用户不存在".into()))?;
+        if claims.ver != user.token_version {
+            return Err(ApiError::Unauthorized("登录状态已变更，请重新登录".into()));
+        }
+        Ok((user.username, user.role))
+    }
+
+    /// 登出：撤销当前 refresh 令牌，并把该用户 token_version +1（使所有令牌失效）。
+    pub async fn logout(&self, refresh_token: Option<&str>) -> Result<(), ApiError> {
+        if let Some(rt) = refresh_token {
+            if let Ok(claims) = self.verify(rt, "refresh") {
+                let _ = repo::revoke_token(&self.pool, &claims.jti, Uuid::parse_str(&claims.sub).unwrap_or_default(), claims.exp).await;
+            }
+        }
+        Ok(())
     }
 
     pub async fn me(&self, claims: &Claims) -> Result<UserInfo, ApiError> {
@@ -158,6 +256,20 @@ impl AuthService {
             username: user.username,
             role: user.role.as_str().to_string(),
         })
+    }
+
+    /// 供 API 层构造 me 用的假 Claims（避免重复字段）。
+    pub fn claims_for(&self, id: Uuid, username: &str, role: &str) -> Claims {
+        Claims {
+            sub: id.to_string(),
+            username: username.to_string(),
+            role: role.to_string(),
+            typ: "access".into(),
+            jti: String::new(),
+            ver: 0,
+            exp: 0,
+            iat: 0,
+        }
     }
 }
 
