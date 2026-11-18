@@ -179,12 +179,11 @@ export const useInstancesStore = defineStore('instances', () => {
     try {
       const detail = await instanceApi.get(id)
       const idx = items.value.findIndex((i) => i.id === id)
-      const { paths, admin_api, connection, deployment, tags, ...summary } = detail
+      const { paths, admin_api, connection, deployment, ...summary } = detail
       void paths
       void admin_api
       void connection
       void deployment
-      void tags
       if (idx >= 0) items.value[idx] = summary
       else await fetchAll()
     } catch (e) {
