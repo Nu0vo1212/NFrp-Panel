@@ -37,7 +37,16 @@
 ### `POST /api/auth/refresh` → 同上（不含 refresh_token 轮换时的旧值）
 ### `POST /api/auth/logout` → 204
 ### `GET  /api/auth/me` → `{ id, username, role, created_at }`
-### `GET  /api/health` → `{ "status": "ok", "version": "0.1.0" }`（免鉴权）
+### `GET  /api/health` → `{ "status": "ok", "version": "0.2.0" }`（免鉴权）
+
+### 会话约束（0.2.0 起）
+
+- `access_token` / `refresh_token` 都带 `jti` 与用户级 `ver`（token_version）
+- `POST /api/auth/refresh` 每次调用即轮换：旧 refresh 立即作废，重复使用返回 401
+- `POST /api/auth/logout` 递增 `token_version`，该用户所有已签发 token 立即失效
+- 修改口令（`POST /api/auth/password`）同样递增版本号
+- 登录失败累计到阈值后临时锁定，返回 401 + `账号已临时锁定`
+- 每个受保护请求都会回查数据库校验 `ver` 与 `role`，JWT 里的 `role` 不作为权限依据
 
 ---
 
@@ -97,6 +106,19 @@ interface InstanceDetail extends InstanceSummary {
 
 ### `PATCH /api/instances/:id` → `InstanceDetail`（部分字段）
 ### `DELETE /api/instances/:id` → 204（`?force=true` 时即使运行中也删除）
+
+### 配置导入导出（仅 admin）
+
+- `GET  /api/instances/export` → `{ version: 1, exported_at, items: [...] }`
+  - `items[]` 字段与 `POST /api/instances` 的请求体一致，但 **不含任何口令**（`admin_api.password` 不导出）
+- `POST /api/instances/import`
+
+```json
+{ "version": 1, "items": [ { "name": "...", "role": "server", "driver": "binary", "flavor": "nfrp", "...": "..." } ] }
+```
+→ `{ "created": ["a"], "skipped": ["b"], "failed": [{ "name": "c", "error": "..." }] }`
+
+同名实例一律跳过，不覆盖已有配置。
 
 ### 生命周期
 - `POST /api/instances/:id/start` → `{ state, pid }`
@@ -190,6 +212,9 @@ interface ProxyOpResult {
 - `GET /api/instances/:id/logs?offset=0&limit=200&q=&level=&tail=true`
 - `GET /api/instances/:id/logs/download`
 - `GET /api/instances/:id/logs/stream`（SSE）
+  - 事件名固定为 `log`，`data` 为 `{ "lines": [{ "raw": "...", "level": "INFO" }], "reset": false }`
+  - 服务端每 1.5s tail 一次，只推新增行；`reset: true` 表示日志轮转/清空，前端应清空后重建
+  - 因为浏览器原生 `EventSource` 无法带 `Authorization` 头，前端用 `fetch` + `ReadableStream` 解析 SSE 帧
 
 ```ts
 interface LogPage { lines: LogLine[], total: number | null, next_offset: number | null, source: 'file'|'remote'|'journal', path: string }
@@ -334,7 +359,41 @@ interface Settings {
 
 ---
 
-## 12. 能力对象（前端唯一驱动差异来源）
+## 12. 用户与角色（仅 admin）
+
+- `GET    /api/users` → `[{ id, username, role, created_at, last_login_at }]`
+- `POST   /api/users` → `{ username, password, role }`
+- `PATCH  /api/users/:id` → `{ role?, password? }`（改角色或重置口令）
+- `DELETE /api/users/:id` → 204
+
+约束：
+
+- 角色只有 `admin`（可写）/ `viewer`（只读），其他值返回 422
+- 不能删除自己，也不能把最后一个 admin 降级或删除，冲突返回 409
+- 改角色 / 重置口令都会递增该用户的 `token_version`，旧 token 立即失效
+
+---
+
+## 13. 告警通知（仅 admin 可写，viewer 可读）
+
+- `GET    /api/alerts/webhooks` / `POST /api/alerts/webhooks` / `DELETE /api/alerts/webhooks/:id`
+- `POST   /api/alerts/webhooks/test` → `{ url }`，直接向该 URL 发一条测试消息
+- `GET    /api/alerts/rules?instance_id=` / `POST /api/alerts/rules` / `DELETE /api/alerts/rules/:id`
+
+```ts
+interface WebhookView { id: string, name: string, url: string, enabled: boolean, events: string[], created_at: string }
+interface AlertRuleView { id: string, instance_id: string, metric: string, op: string, threshold: number, window_min: number, enabled: boolean }
+
+// events 取值
+type AlertEvent = 'instance_unhealthy' | 'deploy_failed' | 'metric_threshold'
+```
+
+推送体：`{ event, title, body, ts, source }`，同时带 `X-Nfrp-Event: <event>` 头。
+阈值规则命中后按 30 分钟冷却，避免告警风暴。
+
+---
+
+## 14. 能力对象（前端唯一驱动差异来源）
 
 ```ts
 interface Capabilities {
