@@ -32,6 +32,7 @@ pub struct InstanceSummary {
     pub driver_label: String,
     pub flavor: String,
     pub flavor_label: String,
+    pub tags: Vec<String>,
     pub connection_kind: String,
     pub host: String,
     pub remote_ident: String,
@@ -225,6 +226,7 @@ impl InstanceSummary {
             driver_label: row.driver.display_name().to_string(),
             flavor: row.flavor.as_str().to_string(),
             flavor_label: row.flavor.display_name().to_string(),
+            tags: row.tags.clone(),
             connection_kind: if row.connection.is_remote() {
                 "ssh".into()
             } else {
@@ -435,17 +437,11 @@ pub async fn list(
 
     Ok(Json(super::ListResponse::new(items, page, page_size, total)))
 }
-pub async fn create(
-    State(st): State<Arc<AppState>>,
-    user: AuthUser,
-    peer: PeerIp,
-    headers: HeaderMap,
-    Json(req): Json<InstanceCreateRequest>,
-) -> Result<(axum::http::StatusCode, Json<InstanceDetail>), ApiError> {
-    user.require_admin()?;
-    let ip = peer_ip(&peer, &headers);
-    let started = Instant::now();
-
+/// 创建实例的核心逻辑（不含鉴权与审计），供 create / import 复用。
+async fn create_one(
+    st: &Arc<AppState>,
+    req: InstanceCreateRequest,
+) -> Result<(Uuid, String, InstanceRole, DriverKind, BinaryFlavor), ApiError> {
     let name = req.name.trim().to_string();
     if name.is_empty() {
         return Err(ApiError::bad_request("实例名称不能为空"));
@@ -554,6 +550,22 @@ pub async fn create(
             return Err(e);
         }
     }
+
+    Ok((id, name, role, driver, flavor))
+}
+
+pub async fn create(
+    State(st): State<Arc<AppState>>,
+    user: AuthUser,
+    peer: PeerIp,
+    headers: HeaderMap,
+    Json(req): Json<InstanceCreateRequest>,
+) -> Result<(axum::http::StatusCode, Json<InstanceDetail>), ApiError> {
+    user.require_admin()?;
+    let ip = peer_ip(&peer, &headers);
+    let started = Instant::now();
+
+    let (id, name, role, driver, flavor) = create_one(&st, req).await?;
 
     st.audit
         .record(
@@ -1077,4 +1089,164 @@ pub async fn diagnose_capabilities(
         "role": row.role.as_str(),
         "endpoints": endpoints,
     })))
+}
+// ---------------------------------------------------------------------------
+// 配置导入 / 导出
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+pub struct ExportItem {
+    pub name: String,
+    pub role: String,
+    pub driver: String,
+    pub flavor: String,
+    pub tags: Vec<String>,
+    pub connection: Connection,
+    pub paths: InstancePaths,
+    pub service_mode: String,
+    pub service_unit: Option<String>,
+    /// 不含密码：口令从不落盘导出，导入后需在界面上重填。
+    pub admin_api: ExportAdminApi,
+    pub binary_version: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportAdminApi {
+    pub base_url: String,
+    pub user: String,
+    pub enabled: bool,
+    pub prometheus_url: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportEnvelope {
+    pub version: u32,
+    pub exported_at: String,
+    pub items: Vec<ExportItem>,
+}
+
+/// 导出全部实例配置（不含任何明文/密文口令）。
+pub async fn export(
+    State(st): State<Arc<AppState>>,
+    user: AuthUser,
+) -> Result<Json<ExportEnvelope>, ApiError> {
+    user.require_admin()?;
+    let rows = repo::list_instances(&st.db).await?;
+    let items = rows
+        .iter()
+        .map(|row| ExportItem {
+            name: row.name.clone(),
+            role: row.role.as_str().to_string(),
+            driver: row.driver.as_str().to_string(),
+            flavor: row.flavor.as_str().to_string(),
+            tags: row.tags.clone(),
+            connection: row.connection.clone(),
+            paths: row.paths.clone(),
+            service_mode: row.service_mode.as_str().to_string(),
+            service_unit: row.service_unit.clone(),
+            admin_api: ExportAdminApi {
+                base_url: row.admin_api_base_url.clone(),
+                user: row.admin_api_user.clone(),
+                enabled: row.admin_api_enabled,
+                prometheus_url: row.admin_api_prometheus_url.clone(),
+            },
+            binary_version: row.binary_version.clone(),
+        })
+        .collect();
+    Ok(Json(ExportEnvelope {
+        version: 1,
+        exported_at: crate::db::now_str(),
+        items,
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ImportRequest {
+    /// 兼容两种格式：直接给数组，或给导出信封 { version, items }
+    #[serde(default)]
+    pub items: Option<Vec<InstanceCreateRequest>>,
+    #[serde(default)]
+    pub version: Option<u32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImportFailure {
+    pub name: String,
+    pub error: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImportReport {
+    pub created: Vec<String>,
+    pub skipped: Vec<String>,
+    pub failed: Vec<ImportFailure>,
+}
+
+/// 导入实例配置。同名实例一律跳过（不覆盖），避免误改线上配置。
+pub async fn import(
+    State(st): State<Arc<AppState>>,
+    user: AuthUser,
+    peer: PeerIp,
+    headers: HeaderMap,
+    Json(req): Json<ImportRequest>,
+) -> Result<Json<ImportReport>, ApiError> {
+    user.require_admin()?;
+    let ip = peer_ip(&peer, &headers);
+    let items = req.items.unwrap_or_default();
+    if items.is_empty() {
+        return Err(ApiError::bad_request("导入内容为空：需要 items 数组"));
+    }
+
+    let existing = repo::list_instances(&st.db)
+        .await?
+        .into_iter()
+        .map(|r| r.name)
+        .collect::<std::collections::HashSet<_>>();
+
+    let mut created = Vec::new();
+    let mut skipped = Vec::new();
+    let mut failed = Vec::new();
+
+    for item in items {
+        let name = item.name.trim().to_string();
+        if name.is_empty() {
+            failed.push(ImportFailure {
+                name: "(未命名)".into(),
+                error: "实例名称不能为空".into(),
+            });
+            continue;
+        }
+        if existing.contains(&name) {
+            skipped.push(name);
+            continue;
+        }
+        match create_one(&st, item).await {
+            Ok((_, created_name, _, _, _)) => created.push(created_name),
+            Err(e) => failed.push(ImportFailure {
+                name,
+                error: e.to_string(),
+            }),
+        }
+    }
+
+    st.audit
+        .record(
+            &user.actor(ip),
+            action::INSTANCE_CREATE,
+            "batch-import",
+            AuditResult::Success,
+            0,
+            serde_json::json!({
+                "created": created.len(),
+                "skipped": skipped.len(),
+                "failed": failed.len(),
+            }),
+        )
+        .await;
+
+    Ok(Json(ImportReport {
+        created,
+        skipped,
+        failed,
+    }))
 }
