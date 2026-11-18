@@ -38,6 +38,16 @@ const router = createRouter({
           component: () => import('@/views/AuditView.vue'),
         },
         {
+          path: 'users',
+          name: 'users',
+          component: () => import('@/views/UsersView.vue'),
+        },
+        {
+          path: 'alerts',
+          name: 'alerts',
+          component: () => import('@/views/AlertsView.vue'),
+        },
+        {
           path: 'settings',
           name: 'settings',
           component: () => import('@/views/SettingsView.vue'),
