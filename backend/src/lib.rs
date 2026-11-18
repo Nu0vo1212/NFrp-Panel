@@ -3,6 +3,7 @@
 //! 分层：`api`（HTTP 薄层） → `driver`（驱动能力） → `frpapi`/`configfile`/`deploy`（服务）
 //! → `db`（存储）。`api` 层不允许直接发 frp 请求，必须经 `frpapi`。
 
+pub mod alerts;
 pub mod api;
 pub mod audit;
 pub mod auth;
@@ -20,5 +21,6 @@ pub mod secret;
 pub mod ssh;
 pub mod state;
 pub mod systemd;
+pub mod tls;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
