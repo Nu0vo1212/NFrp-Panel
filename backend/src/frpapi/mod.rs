@@ -108,12 +108,8 @@ impl FrpAdminClient {
         hint: Option<ApiKind>,
     ) -> Result<Self, ApiError> {
         let base = normalize_base(base_url)?;
-        let http = Client::builder()
-            .timeout(timeout)
-            .connect_timeout(Duration::from_millis(2_000))
-            // 面板元数据查询不应该走系统代理
-            .no_proxy()
-            .danger_accept_invalid_certs(true) // frp 面板常用自签名证书
+        // 始终校验证书；自签场景用 FRP_PANEL_CA_FILE 指定额外 CA（见 tls 模块）
+        let http = crate::tls::admin_client_builder(timeout)
             .build()
             .map_err(|e| ApiError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败：{e}")))?;
         Ok(Self {
