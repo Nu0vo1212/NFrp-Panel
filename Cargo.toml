@@ -3,7 +3,7 @@ members = ["backend"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.80"
 license = "GPL-3.0-only"
@@ -55,7 +55,7 @@ reqwest = { version = "0.12", default-features = false, features = [
 ] }
 
 # SSH：russh 0.54 已内置密钥解析（russh-keys 合并入主 crate），用 ring 后端避免 aws-lc-rs 的 C 依赖
-russh = { version = "0.54", default-features = false, features = ["ring", "rsa"] }
+russh = { version = "0.60", default-features = false, features = ["ring", "rsa"] }
 
 # 进程管理
 sysinfo = "0.33"
