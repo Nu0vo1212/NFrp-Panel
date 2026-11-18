@@ -143,6 +143,7 @@ export interface InstanceSummary {
   driver_label: string
   flavor: BinaryFlavor
   flavor_label: string
+  tags: string[]
   connection_kind: 'local' | 'ssh'
   host: string
   remote_ident: string
@@ -576,4 +577,85 @@ export interface Settings {
     audit_enabled: boolean
   }
   theme: 'light' | 'dark'
+}
+
+// ---------------------------------------------------------------------------
+// 用户管理 / 告警通知（v0.2.0）
+// ---------------------------------------------------------------------------
+
+export interface UserSummary {
+  id: string
+  username: string
+  role: UserRole
+  created_at: string
+  last_login_at: string | null
+}
+
+export interface CreateUserRequest {
+  username: string
+  password: string
+  role: UserRole
+}
+
+export interface UpdateUserRequest {
+  role?: UserRole
+  password?: string
+}
+
+export interface WebhookView {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+  events: string[]
+  created_at: string
+}
+
+export interface AlertRuleView {
+  id: string
+  instance_id: string
+  metric: string
+  op: string
+  threshold: number
+  window_min: number
+  enabled: boolean
+  created_at: string
+}
+
+export const ALERT_EVENTS = [
+  { value: 'instance_unhealthy', label: '实例异常' },
+  { value: 'deploy_failed', label: '部署失败' },
+  { value: 'metric_threshold', label: '指标超阈值' },
+] as const
+
+/** 实例配置导出信封（后端 /instances/export）。 */
+export interface InstanceExportItem {
+  name: string
+  role: InstanceRole
+  driver: DriverKind
+  flavor: BinaryFlavor
+  tags: string[]
+  connection: unknown
+  paths: { binary: string; config: string; log: string; work_dir: string }
+  service_mode: ServiceMode
+  service_unit: string | null
+  admin_api: {
+    base_url: string
+    user: string
+    enabled: boolean
+    prometheus_url: string | null
+  }
+  binary_version: string | null
+}
+
+export interface InstanceExport {
+  version: number
+  exported_at: string
+  items: InstanceExportItem[]
+}
+
+export interface ImportReport {
+  created: string[]
+  skipped: string[]
+  failed: { name: string; error: string }[]
 }
