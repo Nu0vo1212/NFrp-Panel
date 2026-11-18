@@ -30,6 +30,7 @@
     { slug: 'instances',    page: 'instances' },
     { slug: 'ssh-deploy',   page: 'ssh-deploy' },
     { slug: 'drivers',      page: 'drivers' },
+    { slug: 'whats-new',    page: 'whats-new' },
     { slug: 'api',          page: 'api' },
     { slug: 'architecture', page: 'architecture' },
     { slug: 'verified',     page: 'verified' },
