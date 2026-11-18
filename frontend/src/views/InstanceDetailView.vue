@@ -7,7 +7,7 @@
  * - 配置编辑有本地校验 + 保存确认；危险操作二次确认；
  * - 敏感字段（Admin API 密码）只显示掩码。
  */
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   configApi,
@@ -372,8 +372,56 @@ async function loadLogs() {
   }
 }
 
-function downloadLogs() {
-  // 直接带 token 下载会污染 URL，这里用 fetch + blob
+// ---- 实时日志（SSE） ----
+const logLive = ref(false)
+const logEl = ref<HTMLElement | null>(null)
+const LOG_CAP = 3000
+let stopLogStream: (() => void) | null = null
+
+function scrollLogToBottom() {
+  const el = logEl.value
+  if (el) el.scrollTop = el.scrollHeight
+}
+
+function startLogLive() {
+  if (logLive.value) return
+  logLive.value = true
+  logQuery.value = ''
+  logLevel.value = ''
+  logLoading.value = false
+  logs.value = []
+  stopLogStream = logApi.stream(id.value, {
+    onLines: (incoming, reset) => {
+      const mapped: LogLine[] = incoming.map((l, i) => ({
+        seq: i + 1,
+        ts: null,
+        level: l.level ?? null,
+        raw: l.raw,
+      }))
+      logs.value = reset ? mapped : [...logs.value, ...mapped]
+      if (logs.value.length > LOG_CAP) logs.value = logs.value.slice(-LOG_CAP)
+      void nextTick(scrollLogToBottom)
+    },
+    onError: (e) => {
+      logLive.value = false
+      stopLogStream = null
+      notify('err', `实时日志中断：${errorMessage(e)}`)
+    },
+  })
+}
+
+function stopLogLive() {
+  stopLogStream?.()
+  stopLogStream = null
+  logLive.value = false
+}
+
+function toggleLogLive() {
+  if (logLive.value) stopLogLive()
+  else startLogLive()
+}
+
+function downloadLogs() {  // 直接带 token 下载会污染 URL，这里用 fetch + blob
   fetch(logApi.downloadUrl(id.value), {
     headers: { Authorization: `Bearer ${tokens.access}` },
   })
@@ -462,6 +510,7 @@ async function rollback() {
 // ---------------------------------------------------------------------------
 
 watch(tab, async (t) => {
+  if (t !== 'logs') stopLogLive()
   if (t === 'config' && !doc.value) await loadConfig()
   if (t === 'proxies' && !proxies.value.length) await loadProxies()
   if (t === 'metrics' && !metrics.value) await loadMetrics()
@@ -484,6 +533,7 @@ onUnmounted(() => {
   window.clearInterval(poll)
   window.clearTimeout(timer)
   stopStream?.()
+  stopLogLive()
 })
 
 function fmtBytes(v: number | null | undefined): string {
@@ -930,7 +980,13 @@ const tabs: { key: Tab; label: string }[] = [
       <div v-if="tab === 'logs'">
         <AcrylicCard padding="none">
           <template #actions>
-            <select v-model="logLevel" class="input select" aria-label="级别筛选" @change="loadLogs">
+            <select
+              v-model="logLevel"
+              class="input select"
+              aria-label="级别筛选"
+              :disabled="logLive"
+              @change="loadLogs"
+            >
               <option value="">全部级别</option>
               <option value="ERROR">ERROR</option>
               <option value="WARN">WARN</option>
@@ -942,11 +998,20 @@ const tabs: { key: Tab; label: string }[] = [
               class="input search"
               type="search"
               placeholder="关键字…"
+              :disabled="logLive"
               @keyup.enter="loadLogs"
             />
-            <button class="btn btn-ghost btn-sm" @click="loadLogs">
+            <button class="btn btn-ghost btn-sm" :disabled="logLive" @click="loadLogs">
               <Icon name="activity" :size="13" />
               查询
+            </button>
+            <button
+              class="btn btn-sm"
+              :class="logLive ? 'btn-danger' : 'btn-ghost'"
+              @click="toggleLogLive"
+            >
+              <Icon :name="logLive ? 'stop' : 'play'" :size="13" />
+              {{ logLive ? '停止实时' : '实时' }}
             </button>
             <button class="btn btn-ghost btn-sm" @click="downloadLogs">
               <Icon name="download" :size="13" />
@@ -957,10 +1022,20 @@ const tabs: { key: Tab; label: string }[] = [
             <span class="aux mono">
               {{ logInfo ? `${logInfo.source} · ${logInfo.path} · 共 ${logInfo.total ?? '?'} 行` : '—' }}
             </span>
+            <span v-if="logLive" class="live-tag">
+              <span class="live-dot" />
+              实时跟随中
+            </span>
           </div>
           <StateView v-if="logLoading" kind="loading" :rows="8" />
           <StateView v-else-if="!logs.length" kind="empty" title="没有日志" description="可能日志文件为空或路径不正确" />
-          <pre v-else class="log-view mono" aria-label="日志内容"><code>{{ logs.map((l) => l.raw).join('\n') }}</code></pre>
+          <pre
+            v-else
+            ref="logEl"
+            class="log-view mono"
+            :class="{ 'log-view-live': logLive }"
+            aria-label="日志内容"
+          ><code>{{ logs.map((l) => l.raw).join('\n') }}</code></pre>
         </AcrylicCard>
       </div>
 
@@ -1559,6 +1634,38 @@ const tabs: { key: Tab; label: string }[] = [
 .log-meta {
   padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--divider);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+.live-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--success);
+  white-space: nowrap;
+}
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+.log-view-live {
+  box-shadow: inset 2px 0 0 var(--success);
 }
 .log-view {
   margin: 0;
