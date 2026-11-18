@@ -158,6 +158,11 @@ pub fn spawn_poller(
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut last_prune = Utc::now().timestamp();
+        // 实例连续采样失败计数 / 上次"不健康"告警时间（30 分钟冷却）
+        let mut fail_streak: std::collections::HashMap<uuid::Uuid, u32> =
+            std::collections::HashMap::new();
+        let mut last_unhealthy_alert: std::collections::HashMap<uuid::Uuid, i64> =
+            std::collections::HashMap::new();
         loop {
             tokio::time::sleep(interval).await;
             let rows = match repo::list_instances(&db).await {
@@ -172,15 +177,47 @@ pub fn spawn_poller(
                 let Ok(driver) = drivers.get_or_build(id, &state).await else {
                     continue;
                 };
-                if let Ok(snap) = driver.metrics().await {
-                    let _ = record(&db, id, &snap).await;
+                match driver.metrics().await {
+                    Ok(snap) => {
+                        fail_streak.remove(&id);
+                        let _ = record(&db, id, &snap).await;
+                    }
+                    Err(_) => {
+                        // 连续 3 次拿不到指标才判定"不健康"，避免一次抖动静默告警
+                        let streak = fail_streak.entry(id).or_insert(0);
+                        *streak += 1;
+                        if *streak == 3 {
+                            let now = Utc::now().timestamp();
+                            let cooled = last_unhealthy_alert
+                                .get(&id)
+                                .map(|t| now - t > 1800)
+                                .unwrap_or(true);
+                            if cooled {
+                                last_unhealthy_alert.insert(id, now);
+                                let _ = crate::alerts::notify(
+                                    &db,
+                                    crate::alerts::EVENT_UNHEALTHY,
+                                    &format!("实例「{}」连续 3 次采样失败", row.name),
+                                    &format!(
+                                        "目标 {} 的指标接口不可达，请检查实例状态与 Admin API 配置。",
+                                        row.connection.host_label()
+                                    ),
+                                )
+                                .await;
+                            }
+                        }
+                    }
                 }
             }
+            // 指标阈值告警（规则内部有 30 分钟冷却，避免告警风暴）
+            let _ = crate::alerts::evaluate_metric_rules(&db).await;
+
             // 每天清理一次过期采样
             let now = Utc::now().timestamp();
             if now - last_prune > 86400 {
                 let cutoff = now - (retention_days as i64) * 86400;
                 let _ = repo::prune_metrics(&db, cutoff).await;
+                let _ = repo::purge_expired_revoked(&db).await;
                 last_prune = now;
             }
         }
