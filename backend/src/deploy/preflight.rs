@@ -277,10 +277,7 @@ pub async fn run(
 
     // 10) Admin API 可达性（从面板本机访问）
     if !input.admin_api_url.trim().is_empty() {
-        let ok = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(3))
-            .no_proxy()
-            .danger_accept_invalid_certs(true)
+        let ok = crate::tls::admin_client_builder(std::time::Duration::from_secs(3))
             .build()
             .ok()
             .map(|c| c.get(input.admin_api_url.trim()).send())
