@@ -94,3 +94,44 @@ pub struct ListQuerySize {
     #[serde(default)]
     pub limit: Option<usize>,
 }
+
+/// 实时日志流（SSE）：周期性 tail 日志，只推送新增内容。
+/// 增量判定用「行数 + 最后一行内容」指纹，日志轮转/清空后自动重新同步。
+pub async fn stream(
+    State(st): State<Arc<AppState>>,
+    _user: AuthUser,
+    Path(id): Path<String>,
+) -> Result<axum::response::Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>>, ApiError> {
+    let iid = Uuid::parse_str(&id).map_err(|_| ApiError::bad_request("实例 ID 不合法"))?;
+    // 首次拉取在流建立前做，确保实例/权限有效
+    let _ = st.driver(iid).await?;
+
+    let stream = futures::stream::unfold(
+        (st, iid, 0usize, String::new()),
+        |(st, iid, last_count, last_tail)| async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+                let page = match st.driver(iid).await {
+                    Ok(d) => d.logs(LogQuery { offset: None, limit: Some(2000), q: None, level: None, tail: Some(true) }).await,
+                    Err(_) => continue,
+                };
+                let page = match page { Ok(p) => p, Err(_) => continue };
+                let lines = &page.lines;
+                let tail = lines.last().map(|l| l.raw.clone()).unwrap_or_default();
+                let rotated = lines.len() < last_count || (lines.len() == last_count && tail != last_tail);
+                let start = if rotated { 0 } else { last_count };
+                if lines.len() > start {
+                    let chunk: Vec<serde_json::Value> = lines[start..]
+                        .iter()
+                        .map(|l| serde_json::json!({ "raw": l.raw, "level": l.level }))
+                        .collect();
+                    let event = axum::response::sse::Event::default()
+                        .event("log")
+                        .data(serde_json::json!({ "lines": chunk, "reset": rotated }).to_string());
+                    return Some((Ok(event), (st, iid, lines.len(), tail)));
+                }
+            }
+        },
+    );
+    Ok(axum::response::Sse::new(stream))
+}
