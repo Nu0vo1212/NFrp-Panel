@@ -68,6 +68,14 @@ pub async fn run(
                 )
                 .await;
             }
+            // 主动通知：部署失败
+            let _ = crate::alerts::notify(
+                &st.db,
+                crate::alerts::EVENT_DEPLOY_FAILED,
+                &format!("部署失败 · {}", input.instance.name),
+                &msg,
+            )
+            .await;
             (hub.get(&task_id).await.map(|t| t.state).unwrap_or(DeployState::Failed), Some(msg))
         }
     }
@@ -661,10 +669,7 @@ async fn wait_admin_api(url: &str, user: &str, password: &str) -> bool {
     if url.trim().is_empty() {
         return true; // 没配 Admin API 就跳过
     }
-    let Ok(client) = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(3))
-        .no_proxy()
-        .danger_accept_invalid_certs(true)
+    let Ok(client) = crate::tls::admin_client_builder(std::time::Duration::from_secs(3))
         .build()
     else {
         return false;
