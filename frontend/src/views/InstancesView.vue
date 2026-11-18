@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 实例列表 / 概览：状态、类型、驱动、主机、版本、部署状态、快捷启停。 */
+/** 实例列表 / 概览：状态、类型、驱动、主机、版本、部署状态、快捷启停、分组与批量操作。 */
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useInstancesStore } from '@/stores/instances'
@@ -8,6 +8,7 @@ import AcrylicCard from '@/components/glass/AcrylicCard.vue'
 import StateBadge from '@/components/common/StateBadge.vue'
 import StateView from '@/components/common/StateView.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { instanceApi } from '@/api/endpoints'
 import { errorMessage } from '@/api/client'
 import type { InstanceSummary } from '@/api/types'
 
@@ -26,7 +27,164 @@ function notify(kind: 'ok' | 'err', text: string) {
 }
 
 const canOperate = computed(() => session.canWrite)
+const isAdmin = computed(() => session.user?.role === 'admin')
 
+// ---- 选择与批量 ----
+const selected = ref<Set<string>>(new Set())
+const batchBusy = ref(false)
+const confirmOpen = ref(false)
+const confirmText = ref('')
+
+function toggleOne(id: string) {
+  const next = new Set(selected.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  selected.value = next
+}
+
+function toggleAll() {
+  const visible = visibleIds.value
+  const allChecked = visible.length > 0 && visible.every((id) => selected.value.has(id))
+  const next = new Set(selected.value)
+  if (allChecked) visible.forEach((id) => next.delete(id))
+  else visible.forEach((id) => next.add(id))
+  selected.value = next
+}
+
+function clearSelection() {
+  selected.value = new Set()
+}
+
+const visibleIds = computed(() => store.filtered.map((i) => i.id))
+const allChecked = computed(
+  () => visibleIds.value.length > 0 && visibleIds.value.every((id) => selected.value.has(id)),
+)
+const selectedItems = computed(() => store.items.filter((i) => selected.value.has(i.id)))
+
+async function runBatch(action: 'start' | 'stop' | 'restart') {
+  const targets = selectedItems.value.filter((i) => i.capabilities.can_start_stop)
+  if (!targets.length) {
+    notify('err', '所选实例都不支持启停操作')
+    return
+  }
+  batchBusy.value = true
+  let ok = 0
+  let fail = 0
+  // 串行执行，避免同时打爆目标主机
+  for (const inst of targets) {
+    try {
+      await store[action](inst.id)
+      ok += 1
+    } catch {
+      fail += 1
+    }
+  }
+  batchBusy.value = false
+  clearSelection()
+  notify(
+    fail ? 'err' : 'ok',
+    `${actionLabel(action)}完成：成功 ${ok} 个${fail ? `，失败 ${fail} 个` : ''}`,
+  )
+}
+
+function actionLabel(a: 'start' | 'stop' | 'restart') {
+  return a === 'start' ? '批量启动' : a === 'stop' ? '批量停止' : '批量重启'
+}
+
+function askBatchDelete() {
+  confirmText.value = `确定删除所选的 ${selected.value.size} 个实例吗？仅移除面板记录，不会卸载目标主机上的二进制。`
+  confirmOpen.value = true
+}
+
+async function doBatchDelete() {
+  const ids = [...selected.value]
+  confirmOpen.value = false
+  batchBusy.value = true
+  let ok = 0
+  let fail = 0
+  for (const id of ids) {
+    try {
+      await store.remove(id, true)
+      ok += 1
+    } catch {
+      fail += 1
+    }
+  }
+  batchBusy.value = false
+  clearSelection()
+  notify('ok', `已删除 ${ok} 个实例${fail ? `，${fail} 个失败` : ''}`)
+  await store.fetchAll()
+}
+
+// ---- 分组 ----
+const grouped = ref(false)
+const groups = computed(() => {
+  if (!grouped.value) return [{ key: '__all__', label: '', items: store.filtered }]
+  const map = new Map<string, InstanceSummary[]>()
+  for (const inst of store.filtered) {
+    const key = inst.tags.length ? inst.tags[0] : '未分组'
+    const list = map.get(key)
+    if (list) list.push(inst)
+    else map.set(key, [inst])
+  }
+  return [...map.entries()]
+    .sort((a, b) => (a[0] === '未分组' ? 1 : b[0] === '未分组' ? -1 : a[0].localeCompare(b[0])))
+    .map(([key, items]) => ({ key, label: key, items }))
+})
+
+// ---- 导入 / 导出 ----
+const importInput = ref<HTMLInputElement | null>(null)
+const importing = ref(false)
+
+async function doExport() {
+  try {
+    const data = await instanceApi.exportConfig()
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const stamp = new Date().toISOString().slice(0, 10)
+    a.href = url
+    a.download = `nfrp-instances-${stamp}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    notify('ok', `已导出 ${data.items.length} 个实例配置（不含口令）`)
+  } catch (e) {
+    notify('err', errorMessage(e))
+  }
+}
+
+async function onImportFile(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  importing.value = true
+  try {
+    const text = await file.text()
+    const parsed = JSON.parse(text) as unknown
+    const items = Array.isArray(parsed)
+      ? parsed
+      : ((parsed as { items?: unknown[] }).items ?? [])
+    if (!Array.isArray(items) || !items.length) {
+      throw new Error('文件里没有可导入的实例配置')
+    }
+    const report = await instanceApi.importConfig(items)
+    const parts = [`新增 ${report.created.length} 个`]
+    if (report.skipped.length) parts.push(`跳过同名 ${report.skipped.length} 个`)
+    if (report.failed.length) parts.push(`失败 ${report.failed.length} 个`)
+    notify(report.failed.length ? 'err' : 'ok', `导入完成：${parts.join('，')}`)
+    if (report.failed.length) {
+      notify('err', `导入失败：${report.failed[0].name} — ${report.failed[0].error}`)
+    }
+    await store.fetchAll()
+  } catch (e) {
+    notify('err', errorMessage(e))
+  } finally {
+    importing.value = false
+  }
+}
+
+// ---- 单实例操作 ----
 async function doStart(inst: InstanceSummary) {
   try {
     await store.start(inst.id)
@@ -94,10 +252,32 @@ onUnmounted(() => {
         </p>
       </div>
       <div class="head-actions">
+        <input
+          ref="importInput"
+          type="file"
+          accept="application/json,.json"
+          class="hidden-file"
+          @change="onImportFile"
+        />
         <button class="btn btn-ghost" @click="store.fetchAll()" :disabled="store.loading">
           <Icon name="refresh" :size="15" />
           刷新
         </button>
+        <template v-if="isAdmin">
+          <button
+            class="btn btn-ghost"
+            :disabled="importing"
+            title="从 JSON 导入实例配置（同名跳过）"
+            @click="importInput?.click()"
+          >
+            <Icon name="file" :size="15" />
+            {{ importing ? '导入中…' : '导入' }}
+          </button>
+          <button class="btn btn-ghost" title="导出全部实例配置（不含口令）" @click="doExport">
+            <Icon name="download" :size="15" />
+            导出
+          </button>
+        </template>
         <button
           v-if="canOperate"
           class="btn btn-primary"
@@ -167,6 +347,41 @@ onUnmounted(() => {
           <option value="server">frps</option>
           <option value="client">frpc</option>
         </select>
+        <label class="group-toggle">
+          <input v-model="grouped" type="checkbox" />
+          <span>按标签分组</span>
+        </label>
+      </div>
+
+      <!-- 批量操作条 -->
+      <div v-if="selected.size" class="batch-bar">
+        <span class="batch-count">已选 {{ selected.size }} 个</span>
+        <button
+          class="btn btn-sm btn-ghost"
+          :disabled="batchBusy"
+          @click="runBatch('start')"
+        >
+          <Icon name="play" :size="13" />
+          启动
+        </button>
+        <button class="btn btn-sm btn-ghost" :disabled="batchBusy" @click="runBatch('stop')">
+          <Icon name="stop" :size="13" />
+          停止
+        </button>
+        <button class="btn btn-sm btn-ghost" :disabled="batchBusy" @click="runBatch('restart')">
+          <Icon name="restart" :size="13" />
+          重启
+        </button>
+        <button
+          v-if="isAdmin"
+          class="btn btn-sm btn-danger"
+          :disabled="batchBusy"
+          @click="askBatchDelete"
+        >
+          <Icon name="delete" :size="13" />
+          删除
+        </button>
+        <button class="btn btn-sm btn-ghost" @click="clearSelection">取消选择</button>
       </div>
 
       <StateView v-if="store.loading && !store.items.length" kind="loading" :rows="5" />
@@ -203,6 +418,14 @@ onUnmounted(() => {
         <table class="table">
           <thead>
             <tr>
+              <th class="col-pick">
+                <input
+                  type="checkbox"
+                  :checked="allChecked"
+                  aria-label="全选"
+                  @change="toggleAll"
+                />
+              </th>
               <th class="col-name">名称</th>
               <th class="col-role">角色</th>
               <th class="col-driver">驱动</th>
@@ -213,13 +436,31 @@ onUnmounted(() => {
               <th class="col-actions">操作</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody v-for="group in groups" :key="group.key">
+            <tr v-if="grouped" class="group-row">
+              <td :colspan="9">
+                <span class="group-name">
+                  <Icon name="layers" :size="13" />
+                  {{ group.label }}
+                </span>
+                <span class="group-count">{{ group.items.length }}</span>
+              </td>
+            </tr>
             <tr
-              v-for="inst in store.filtered"
+              v-for="inst in group.items"
               :key="inst.id"
               class="row"
+              :class="{ 'row-selected': selected.has(inst.id) }"
               @click="open(inst)"
             >
+              <td class="col-pick" @click.stop>
+                <input
+                  type="checkbox"
+                  :checked="selected.has(inst.id)"
+                  :aria-label="`选择 ${inst.name}`"
+                  @change="toggleOne(inst.id)"
+                />
+              </td>
               <td class="col-name">
                 <div class="name-cell">
                   <span class="name" :title="inst.name">{{ inst.name }}</span>
@@ -291,6 +532,20 @@ onUnmounted(() => {
       </div>
     </AcrylicCard>
 
+    <!-- 删除确认 -->
+    <Transition name="fade">
+      <div v-if="confirmOpen" class="overlay" @click.self="confirmOpen = false">
+        <div class="dialog">
+          <h3 class="dialog-title">确认删除</h3>
+          <p class="dialog-text">{{ confirmText }}</p>
+          <div class="dialog-actions">
+            <button class="btn btn-ghost" @click="confirmOpen = false">取消</button>
+            <button class="btn btn-danger" @click="doBatchDelete">确定删除</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <!-- 轻提示 -->
     <Transition name="toast">
       <div v-if="toast" class="toast" :class="`toast-${toast.kind}`" role="status">
@@ -304,6 +559,10 @@ onUnmounted(() => {
 .head-actions {
   display: flex;
   gap: var(--space-3);
+  align-items: center;
+}
+.hidden-file {
+  display: none;
 }
 
 .btn {
@@ -342,6 +601,14 @@ onUnmounted(() => {
 .btn-ghost:hover:not(:disabled) {
   background: var(--primary-soft);
   color: var(--primary);
+}
+.btn-danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger);
+  color: #fff;
 }
 .btn-sm {
   height: 30px;
@@ -401,6 +668,32 @@ onUnmounted(() => {
   gap: var(--space-3);
   padding: var(--space-5) var(--space-6);
   border-bottom: 1px solid var(--divider);
+  align-items: center;
+}
+.group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-aux);
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px var(--space-6);
+  background: var(--primary-soft);
+  border-bottom: 1px solid var(--divider);
+}
+.batch-count {
+  font-size: var(--fs-aux);
+  font-weight: 600;
+  color: var(--primary);
+  margin-right: var(--space-2);
 }
 
 .input {
@@ -468,6 +761,26 @@ onUnmounted(() => {
   font-variant-numeric: tabular-nums;
 }
 
+.group-row td {
+  padding: 8px var(--space-6);
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--divider);
+}
+.group-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-aux);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.group-count {
+  margin-left: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
 .row {
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease);
@@ -475,12 +788,19 @@ onUnmounted(() => {
 .row:hover {
   background: var(--primary-soft);
 }
+.row-selected {
+  background: var(--primary-soft);
+}
 .row:last-child td {
   border-bottom: none;
 }
 
+.col-pick {
+  width: 3%;
+  padding-right: 0 !important;
+}
 .col-name {
-  width: 24%;
+  width: 22%;
 }
 .col-role {
   width: 7%;
@@ -571,6 +891,50 @@ onUnmounted(() => {
   border-color: transparent;
 }
 
+/* 确认对话框 */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  backdrop-filter: blur(2px);
+  display: grid;
+  place-items: center;
+  z-index: 60;
+}
+.dialog {
+  width: min(420px, calc(100vw - 48px));
+  padding: var(--space-6);
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+  border: 1px solid var(--divider);
+}
+.dialog-title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--fs-title-sm, 16px);
+  color: var(--text);
+}
+.dialog-text {
+  margin: 0 0 var(--space-6);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity var(--dur-base) var(--ease);
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
 /* toast */
 .toast {
   position: fixed;
@@ -581,7 +945,7 @@ onUnmounted(() => {
   font-size: var(--fs-body);
   box-shadow: var(--shadow-pop);
   backdrop-filter: var(--acrylic-blur);
-  z-index: 50;
+  z-index: 70;
   max-width: 420px;
 }
 .toast-ok {
