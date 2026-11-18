@@ -43,6 +43,9 @@ pub struct UserRow {
     pub role: Role,
     pub created_at: String,
     pub last_login_at: Option<String>,
+    pub token_version: i64,
+    pub failed_attempts: i64,
+    pub locked_until: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -219,4 +222,26 @@ pub fn sudo_label(s: SudoMode) -> &'static str {
         SudoMode::SudoN => "sudo -n",
         SudoMode::Custom => "自定义",
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct AlertWebhookRow {
+    pub id: Uuid,
+    pub name: String,
+    pub url: String,
+    pub enabled: bool,
+    pub events: Vec<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlertRuleRow {
+    pub id: Uuid,
+    pub instance_id: Uuid,
+    pub metric: String,
+    pub op: String,
+    pub threshold: f64,
+    pub window_min: i64,
+    pub enabled: bool,
+    pub created_at: String,
 }
