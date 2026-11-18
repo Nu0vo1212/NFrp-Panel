@@ -49,6 +49,9 @@ pub async fn insert_user(
         role,
         created_at: now,
         last_login_at: None,
+        token_version: 0,
+        failed_attempts: 0,
+        locked_until: None,
     })
 }
 
@@ -60,6 +63,9 @@ fn user_from_row(r: &sqlx::sqlite::SqliteRow) -> UserRow {
         role: Role::parse(&r.get::<String, _>("role")),
         created_at: r.get("created_at"),
         last_login_at: r.get("last_login_at"),
+        token_version: r.get("token_version"),
+        failed_attempts: r.get("failed_attempts"),
+        locked_until: r.get("locked_until"),
     }
 }
 
@@ -96,9 +102,109 @@ pub async fn touch_login(pool: &SqlitePool, id: Uuid) -> Result<(), ApiError> {
 }
 
 pub async fn set_password(pool: &SqlitePool, id: Uuid, hash: &str) -> Result<(), ApiError> {
-    sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
+    sqlx::query("UPDATE users SET password_hash = ?, token_version = token_version + 1, failed_attempts = 0, locked_until = NULL WHERE id = ?")
         .bind(hash)
         .bind(id.to_string())
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// 递增令牌版本：使该用户所有已签发 access/refresh 令牌立即失效。
+pub async fn bump_token_version(pool: &SqlitePool, id: Uuid) -> Result<(), ApiError> {
+    sqlx::query("UPDATE users SET token_version = token_version + 1 WHERE id = ?")
+        .bind(id.to_string())
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn update_user_role(pool: &SqlitePool, id: Uuid, role: Role) -> Result<(), ApiError> {
+    sqlx::query("UPDATE users SET role = ?, token_version = token_version + 1 WHERE id = ?")
+        .bind(role.as_str())
+        .bind(id.to_string())
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn delete_user(pool: &SqlitePool, id: Uuid) -> Result<(), ApiError> {
+    sqlx::query("DELETE FROM users WHERE id = ?")
+        .bind(id.to_string())
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// 登录失败：失败次数 +1；达到阈值时写入锁定截止时间。返回（当前失败次数, 是否已锁定）。
+pub async fn record_login_failure(
+    pool: &SqlitePool,
+    id: Uuid,
+    max_attempts: i64,
+    lock_minutes: i64,
+) -> Result<(), ApiError> {
+    let now = chrono::Utc::now();
+    let lock_until = if max_attempts > 0 {
+        Some(
+            (now + chrono::Duration::minutes(lock_minutes))
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        )
+    } else {
+        None
+    };
+    // SQLite：先自增，再用 CASE 判断是否需要锁定
+    sqlx::query(
+        "UPDATE users SET failed_attempts = failed_attempts + 1, \
+         locked_until = CASE WHEN failed_attempts + 1 >= ? THEN ? ELSE locked_until END \
+         WHERE id = ?",
+    )
+    .bind(max_attempts)
+    .bind(lock_until)
+    .bind(id.to_string())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn reset_login_failure(pool: &SqlitePool, id: Uuid) -> Result<(), ApiError> {
+    sqlx::query("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?")
+        .bind(id.to_string())
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+/// 写入一个已撤销令牌 jti（logout 用）。
+pub async fn revoke_token(
+    pool: &SqlitePool,
+    jti: &str,
+    user_id: Uuid,
+    expires_at: i64,
+) -> Result<(), ApiError> {
+    sqlx::query(
+        "INSERT OR IGNORE INTO revoked_tokens (jti, user_id, expires_at, revoked_at) VALUES (?,?,?,?)",
+    )
+    .bind(jti)
+    .bind(user_id.to_string())
+    .bind(expires_at)
+    .bind(crate::db::now_str())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn is_token_revoked(pool: &SqlitePool, jti: &str) -> Result<bool, ApiError> {
+    let n: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM revoked_tokens WHERE jti = ?")
+        .bind(jti)
+        .fetch_one(pool)
+        .await?;
+    Ok(n > 0)
+}
+
+pub async fn purge_expired_revoked(pool: &SqlitePool) -> Result<(), ApiError> {
+    let now = chrono::Utc::now().timestamp();
+    sqlx::query("DELETE FROM revoked_tokens WHERE expires_at < ?")
+        .bind(now)
         .execute(pool)
         .await?;
     Ok(())
@@ -983,5 +1089,136 @@ pub async fn put_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<()
     .bind(value)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// alert webhooks & metric alert rules
+// ---------------------------------------------------------------------------
+
+fn webhook_from_row(r: &sqlx::sqlite::SqliteRow) -> AlertWebhookRow {
+    let events: Vec<String> = serde_json::from_str(&r.get::<String, _>("events")).unwrap_or_default();
+    AlertWebhookRow {
+        id: Uuid::parse_str(r.get::<String, _>("id").as_str()).unwrap_or_default(),
+        name: r.get("name"),
+        url: r.get("url"),
+        enabled: r.get::<i64, _>("enabled") != 0,
+        events,
+        created_at: r.get("created_at"),
+    }
+}
+
+pub async fn list_webhooks(pool: &SqlitePool) -> Result<Vec<AlertWebhookRow>, ApiError> {
+    let rows = sqlx::query("SELECT id,name,url,enabled,events,created_at FROM alert_webhooks ORDER BY created_at")
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.iter().map(webhook_from_row).collect())
+}
+
+pub async fn insert_webhook(
+    pool: &SqlitePool,
+    name: &str,
+    url: &str,
+    events: &[String],
+) -> Result<AlertWebhookRow, ApiError> {
+    let id = Uuid::new_v4();
+    let now = crate::db::now_str();
+    sqlx::query(
+        "INSERT INTO alert_webhooks (id,name,url,enabled,events,created_at) VALUES (?,?,?,1,?,?)",
+    )
+    .bind(id.to_string())
+    .bind(name)
+    .bind(url)
+    .bind(serde_json::to_string(events).unwrap_or_else(|_| "[]".into()))
+    .bind(&now)
+    .execute(pool)
+    .await?;
+    Ok(AlertWebhookRow {
+        id,
+        name: name.to_string(),
+        url: url.to_string(),
+        enabled: true,
+        events: events.to_vec(),
+        created_at: now,
+    })
+}
+
+pub async fn delete_webhook(pool: &SqlitePool, id: Uuid) -> Result<(), ApiError> {
+    sqlx::query("DELETE FROM alert_webhooks WHERE id = ?")
+        .bind(id.to_string())
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+fn alert_rule_from_row(r: &sqlx::sqlite::SqliteRow) -> AlertRuleRow {
+    AlertRuleRow {
+        id: Uuid::parse_str(r.get::<String, _>("id").as_str()).unwrap_or_default(),
+        instance_id: Uuid::parse_str(r.get::<String, _>("instance_id").as_str()).unwrap_or_default(),
+        metric: r.get("metric"),
+        op: r.get("op"),
+        threshold: r.get::<f64, _>("threshold"),
+        window_min: r.get("window_min"),
+        enabled: r.get::<i64, _>("enabled") != 0,
+        created_at: r.get("created_at"),
+    }
+}
+
+pub async fn list_alert_rules(
+    pool: &SqlitePool,
+    instance_id: Option<Uuid>,
+) -> Result<Vec<AlertRuleRow>, ApiError> {
+    let rows = if let Some(id) = instance_id {
+        sqlx::query("SELECT id,instance_id,metric,op,threshold,window_min,enabled,created_at FROM metric_alert_rules WHERE instance_id = ? ORDER BY created_at")
+            .bind(id.to_string())
+            .fetch_all(pool)
+            .await?
+    } else {
+        sqlx::query("SELECT id,instance_id,metric,op,threshold,window_min,enabled,created_at FROM metric_alert_rules ORDER BY created_at")
+            .fetch_all(pool)
+            .await?
+    };
+    Ok(rows.iter().map(alert_rule_from_row).collect())
+}
+
+pub async fn insert_alert_rule(
+    pool: &SqlitePool,
+    instance_id: Uuid,
+    metric: &str,
+    op: &str,
+    threshold: f64,
+    window_min: i64,
+) -> Result<AlertRuleRow, ApiError> {
+    let id = Uuid::new_v4();
+    let now = crate::db::now_str();
+    sqlx::query(
+        "INSERT INTO metric_alert_rules (id,instance_id,metric,op,threshold,window_min,enabled,created_at) VALUES (?,?,?,?,?,?,1,?)",
+    )
+    .bind(id.to_string())
+    .bind(instance_id.to_string())
+    .bind(metric)
+    .bind(op)
+    .bind(threshold)
+    .bind(window_min)
+    .bind(&now)
+    .execute(pool)
+    .await?;
+    Ok(AlertRuleRow {
+        id,
+        instance_id,
+        metric: metric.to_string(),
+        op: op.to_string(),
+        threshold,
+        window_min,
+        enabled: true,
+        created_at: now,
+    })
+}
+
+pub async fn delete_alert_rule(pool: &SqlitePool, id: Uuid) -> Result<(), ApiError> {
+    sqlx::query("DELETE FROM metric_alert_rules WHERE id = ?")
+        .bind(id.to_string())
+        .execute(pool)
+        .await?;
     Ok(())
 }
