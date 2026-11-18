@@ -1086,10 +1086,7 @@ async fn first_run_id(c: &FrpAdminClient) -> Option<String> {
 
 /// 抓取 Prometheus 文本指标。
 pub async fn fetch_prometheus(url: &str) -> Result<String, ApiError> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(5))
-        .no_proxy()
-        .danger_accept_invalid_certs(true)
+    let client = crate::tls::admin_client_builder(Duration::from_secs(5))
         .build()
         .map_err(|e| ApiError::Internal(anyhow::anyhow!("创建 HTTP 客户端失败：{e}")))?;
     let resp = client
