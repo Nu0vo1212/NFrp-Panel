@@ -88,7 +88,8 @@ pub async fn logout(
     st.audit
         .success(&user.actor(ip), action::AUTH_LOGOUT, &user.username, serde_json::json!({}))
         .await;
-    // JWT 无状态：前端丢弃 token 即可；服务端只记审计
+    // 递增令牌版本：使该用户所有已签发的 access/refresh 令牌立即失效
+    crate::db::repo::bump_token_version(&st.db, user.id).await?;
     Ok(())
 }
 
@@ -109,14 +110,7 @@ pub struct Permissions {
 }
 
 pub async fn me(State(st): State<Arc<AppState>>, user: AuthUser) -> Result<Json<MeResponse>, ApiError> {
-    let claims = crate::auth::Claims {
-        sub: user.id.to_string(),
-        username: user.username.clone(),
-        role: user.role.as_str().to_string(),
-        typ: "access".into(),
-        exp: 0,
-        iat: 0,
-    };
+    let claims = st.auth.claims_for(user.id, &user.username, user.role.as_str());
     let info = st.auth.me(&claims).await?;
     let admin = user.role.can_write();
     Ok(Json(MeResponse {
