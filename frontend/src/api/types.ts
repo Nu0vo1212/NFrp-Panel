@@ -210,6 +210,10 @@ export interface InstanceCreateRequest {
         username: string
         auth_kind: AuthKind
         credential_id?: string | null
+        /** 未选凭据时直接填写的密码/私钥 */
+        secret_inline?: string
+        /** 私钥口令（private_key_passphrase 用） */
+        passphrase_inline?: string
         sudo?: SudoMode
         sudo_cmd?: string | null
       }
@@ -473,6 +477,38 @@ export interface DeployPreflightReport {
 export interface TaskCreated {
   task_id: string
   stream: string
+}
+
+// ---- GitHub Releases ----
+
+export interface ReleaseAsset {
+  name: string
+  url: string
+  size: number
+  os: string
+  arch: string
+  arm_hf: boolean
+  usable: boolean
+  /** 2=与远端完全匹配，1=同架构不同系统，0=不匹配 */
+  match_score: number
+}
+
+export interface ReleaseVersion {
+  tag: string
+  version: string
+  published_at: string
+  prerelease: boolean
+  html_url: string
+  assets: ReleaseAsset[]
+}
+
+export interface ReleaseList {
+  repo: string
+  flavor: string
+  target_os: string
+  target_arch: string
+  versions: ReleaseVersion[]
+  notes: string[]
 }
 
 // ---------------------------------------------------------------------------

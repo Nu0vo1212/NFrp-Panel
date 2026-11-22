@@ -1,13 +1,10 @@
 <script setup lang="ts">
 /**
- * 应用外壳：左侧固定导航（228）+ 顶部工具栏 + 内容区（1280 居中）。
+ * 应用外壳：左侧固定导航 + 顶部工具栏 + 内容区。
  *
- * 交互约定：
- * - 导航项点击：图标弹簧变形（Morphicons）+ "按下→回弹"缩放 + 从点击处扩散的柔和光晕
- *   + 选中条从中间展开；
- * - 动效 120~180ms ease，尊重 prefers-reduced-motion。
+ * 交互约定：导航仅做颜色与背景的即时反馈，不播放按压/光晕动画。
  */
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSessionStore } from '@/stores/session'
 import { useThemeStore } from '@/stores/theme'
@@ -54,14 +51,8 @@ const pageTitle = computed(() => {
   return map[activeName.value] ?? 'FrpPanel'
 })
 
-/** 点击反馈：被点过的项播放一次"按下"动画。 */
-const pressed = ref<string | null>(null)
-let pressTimer: number | undefined
-
+/** 点击导航：直接跳转，不再播放按压/光晕动画。 */
 function onNavClick(item: NavItem) {
-  pressed.value = item.name
-  window.clearTimeout(pressTimer)
-  pressTimer = window.setTimeout(() => (pressed.value = null), 460)
   router.push(item.path)
 }
 
@@ -90,13 +81,12 @@ async function logout() {
           :key="item.name"
           :to="item.path"
           class="nav-item"
-          :class="{ active: isActive(item.name), pressed: pressed === item.name }"
+          :class="{ active: isActive(item.name) }"
           :aria-current="isActive(item.name) ? 'page' : undefined"
           @click.prevent="onNavClick(item)"
         >
-          <span class="nav-glow" aria-hidden="true" />
           <span class="nav-icon">
-            <Icon :name="item.icon" :size="17" spring="bouncy" />
+            <Icon :name="item.icon" :size="17" />
           </span>
           <span class="nav-label">{{ item.label }}</span>
           <span class="nav-bar" aria-hidden="true" />
@@ -171,17 +161,12 @@ async function logout() {
   text-decoration: none;
   color: inherit;
   border-radius: var(--radius-control);
-  transition: transform var(--dur-base) var(--ease);
 }
 .brand:hover {
   text-decoration: none;
-  transform: translateY(-1px);
 }
 .brand-logo {
-  transition: transform var(--dur-slow) var(--ease);
-}
-.brand:hover .brand-logo {
-  transform: rotate(-6deg) scale(1.04);
+  flex: 0 0 auto;
 }
 
 .brand-text {
@@ -234,82 +219,13 @@ async function logout() {
   font-weight: 500;
 }
 
-/* 点击：按压回弹 */
-.nav-item.pressed {
-  animation: nav-press 380ms var(--ease);
-}
-@keyframes nav-press {
-  0% {
-    transform: scale(1);
-  }
-  28% {
-    transform: scale(0.96);
-  }
-  62% {
-    transform: scale(1.015);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-/* 点击：从图标位置扩散的柔和光晕（低饱和主色，无玻璃高光） */
-.nav-glow {
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(
-    circle at 24px 50%,
-    var(--primary-soft-hover),
-    transparent 62%
-  );
-  opacity: 0;
-  pointer-events: none;
-}
-.nav-item.pressed .nav-glow {
-  animation: nav-glow 420ms var(--ease);
-}
-@keyframes nav-glow {
-  0% {
-    opacity: 0;
-    transform: scale(0.85);
-  }
-  35% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.06);
-  }
-}
-
-/* 图标：点击时弹一下，配合 Morphicons 的形变 */
 .nav-icon {
   display: grid;
   place-items: center;
-  transition: transform var(--dur-base) var(--ease);
-}
-.nav-item.pressed .nav-icon {
-  animation: nav-icon-pop 380ms var(--ease);
-}
-@keyframes nav-icon-pop {
-  0% {
-    transform: scale(1) rotate(0deg);
-  }
-  35% {
-    transform: scale(1.18) rotate(-8deg);
-  }
-  70% {
-    transform: scale(0.96) rotate(2deg);
-  }
-  100% {
-    transform: scale(1) rotate(0deg);
-  }
 }
 .nav-item.active .nav-icon {
   color: var(--primary);
 }
-
 .nav-label {
   min-width: 0;
   white-space: nowrap;
@@ -483,12 +399,7 @@ async function logout() {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nav-item.pressed,
-  .nav-item.pressed .nav-glow,
-  .nav-item.pressed .nav-icon {
-    animation: none;
-  }
-  .brand:hover .brand-logo {
+  .page-enter-from {
     transform: none;
   }
 }

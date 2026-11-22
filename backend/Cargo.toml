@@ -50,5 +50,10 @@ hostname.workspace = true
 nfrp-common.workspace = true
 clap = { version = "4.5.61", features = ["derive"] }
 
+# 从 GitHub Releases 解包二进制
+flate2 = "1"
+tar = "0.4"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
 [dev-dependencies]
 tempfile = "3"

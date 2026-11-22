@@ -647,6 +647,8 @@ const tabs: { key: Tab; label: string }[] = [
         </button>
       </div>
 
+      <Transition name="pane" mode="out-in">
+        <div :key="tab" class="tab-pane">
       <!-- ============ 概览 ============ -->
       <div v-if="tab === 'overview'" class="grid-2">
         <AcrylicCard title="运行状态">
@@ -1153,6 +1155,8 @@ const tabs: { key: Tab; label: string }[] = [
           <StateView v-else kind="empty" title="暂无说明" />
         </AcrylicCard>
       </div>
+        </div>
+      </Transition>
     </template>
 
     <!-- ============ 弹层 ============ -->
@@ -1394,6 +1398,31 @@ const tabs: { key: Tab; label: string }[] = [
   color: var(--primary);
   border-bottom-color: var(--primary);
   font-weight: 500;
+}
+
+/* 页签切换：内容淡入并轻微位移，避免整块硬切 */
+.tab-pane {
+  display: block;
+}
+.pane-enter-active {
+  transition: opacity 180ms var(--ease), transform 180ms var(--ease);
+}
+.pane-leave-active {
+  transition: opacity 110ms var(--ease), transform 110ms var(--ease);
+}
+.pane-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.pane-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pane-enter-active,
+  .pane-leave-active {
+    transition: none;
+  }
 }
 
 /* ---- 栅格 ---- */

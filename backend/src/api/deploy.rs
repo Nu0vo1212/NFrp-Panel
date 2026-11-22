@@ -140,6 +140,15 @@ pub struct DeployRequest {
     pub config: Option<String>,
     #[serde(default)]
     pub unit_name: Option<String>,
+    /// 由目标机自行从 GitHub 下载的发行版资产地址（与 binary_b64 互斥）
+    #[serde(default)]
+    pub remote_archive_url: Option<String>,
+    /// 发行版包文件名（如 frp_0.72.0_linux_amd64.tar.gz），用于日志与扩展名判断
+    #[serde(default)]
+    pub remote_archive_name: Option<String>,
+    /// 期望的包 SHA256（可选）
+    #[serde(default)]
+    pub remote_archive_sha256: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -198,6 +207,43 @@ pub async fn deploy(
         .binary_name
         .clone()
         .unwrap_or_else(|| runner::binary_name_for(row.role).to_string());
+
+    // 远端自取发行版：面板主机不下载二进制，交给目标机 curl/wget + tar
+    let remote_archive = match req
+        .remote_archive_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|u| !u.is_empty())
+    {
+        Some(url) => {
+            if binary.is_some() {
+                return Err(ApiError::bad_request(
+                    "binary_b64 与 remote_archive_url 不能同时提供",
+                ));
+            }
+            let archive_name = req
+                .remote_archive_name
+                .clone()
+                .filter(|n| !n.trim().is_empty())
+                .unwrap_or_else(|| {
+                    url.rsplit('/')
+                        .next()
+                        .unwrap_or("release.pkg")
+                        .to_string()
+                });
+            Some(runner::RemoteArchive {
+                url: url.to_string(),
+                member: binary_name.clone(),
+                archive_name,
+                sha256: req
+                    .remote_archive_sha256
+                    .clone()
+                    .filter(|s| !s.trim().is_empty()),
+            })
+        }
+        None => None,
+    };
+
     let unit_name = req
         .unit_name
         .clone()
@@ -212,7 +258,7 @@ pub async fn deploy(
         row.role,
         row.service_mode,
         row.flavor,
-        binary.is_some(),
+        binary.is_some() || remote_archive.is_some(),
     );
     let task_id = Uuid::new_v4().to_string();
     let (_tx, _rx) = st
@@ -233,7 +279,8 @@ pub async fn deploy(
             serde_json::json!({
                 "instance_id": iid.to_string(),
                 "task_id": task_id,
-                "with_binary": binary.is_some(),
+                "with_binary": binary.is_some() || remote_archive.is_some(),
+                "remote_archive": remote_archive.as_ref().map(|r| r.archive_name.clone()),
                 "service": row.service_mode.as_str(),
             }),
         )
@@ -245,6 +292,7 @@ pub async fn deploy(
     let input = DeployInput {
         instance: row,
         binary,
+        remote_archive,
         binary_name,
         config,
         unit_name,
@@ -519,6 +567,46 @@ pub async fn fetch_binary(
         arch,
         notes,
     }))
+}
+
+// ---------------------------------------------------------------------------
+// GitHub Releases
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize, Default)]
+pub struct ReleasesQuery {
+    /// nfrp | official_frp
+    #[serde(default)]
+    pub flavor: Option<String>,
+    /// 目标系统（远端探测结果，默认 linux）
+    #[serde(default)]
+    pub os: Option<String>,
+    /// 目标架构（远端探测结果，默认 amd64）
+    #[serde(default)]
+    pub arch: Option<String>,
+    #[serde(default)]
+    pub limit: Option<usize>,
+    #[serde(default)]
+    pub include_prerelease: Option<bool>,
+}
+
+/// 列出上游仓库的版本与资产，供向导选择架构包。
+pub async fn list_releases(
+    _user: AuthUser,
+    Query(q): Query<ReleasesQuery>,
+) -> Result<Json<crate::deploy::github::ReleaseList>, ApiError> {
+    let flavor = q.flavor.as_deref().unwrap_or("nfrp");
+    let os = q.os.as_deref().unwrap_or("linux");
+    let arch = q.arch.as_deref().unwrap_or("amd64");
+    let list = crate::deploy::github::list_releases(
+        flavor,
+        os,
+        arch,
+        q.limit.unwrap_or(8),
+        q.include_prerelease.unwrap_or(false),
+    )
+    .await?;
+    Ok(Json(list))
 }
 
 /// 位掩码：让未使用的导入不报警（`DeployState`/`DeployStepState` 在别处用到）。

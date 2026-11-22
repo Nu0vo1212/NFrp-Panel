@@ -25,34 +25,22 @@ body {
     color var(--dur-base) var(--ease);
 }
 
-/* 背景：极轻的粉色晕染 + 细网格，给页面一点工程感，不抢内容 */
+/* 背景：极轻的中性网格，给页面一点工程感，不抢内容 */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   pointer-events: none;
   z-index: -1;
-  background-image: radial-gradient(
-      1200px 620px at 10% -12%,
-      rgba(251, 114, 153, 0.07),
-      transparent 60%
-    ),
-    radial-gradient(900px 520px at 100% 0%, rgba(255, 183, 197, 0.08), transparent 55%),
-    linear-gradient(rgba(17, 24, 39, 0.022) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(17, 24, 39, 0.022) 1px, transparent 1px);
-  background-size: auto, auto, 32px 32px, 32px 32px;
+  background-image: linear-gradient(rgba(17, 24, 39, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(17, 24, 39, 0.02) 1px, transparent 1px);
+  background-size: 32px 32px;
 }
 
 [data-theme='dark'] body::before {
-  background-image: radial-gradient(
-      1200px 620px at 10% -12%,
-      rgba(255, 143, 171, 0.08),
-      transparent 60%
-    ),
-    radial-gradient(900px 520px at 100% 0%, rgba(255, 143, 171, 0.05), transparent 55%),
-    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-  background-size: auto, auto, 32px 32px, 32px 32px;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+  background-size: 32px 32px;
 }
 
 h1,

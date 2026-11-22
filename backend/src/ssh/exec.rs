@@ -69,6 +69,14 @@ pub enum AllowedCommand {
     Whoami,
     /// 已有的 frps/frpc 安装情况
     FindFrpBinary,
+    /// 从 GitHub 下载发行版包到远端临时路径（curl 失败回退 wget）
+    DownloadArchive { url: String, path: String },
+    /// 在远端解包并输出「临时目录\n二进制路径」
+    ExtractArchive { archive: String, member: String },
+    /// 删除 /tmp 下的临时目录
+    RemoveDir { path: String },
+    /// 读取 systemd 单元最近日志
+    JournalTail { unit: String, lines: usize },
 }
 
 /// 参数转义：POSIX 单引号内除 `'` 外都是字面量。
@@ -107,6 +115,37 @@ fn check_path(p: &str) -> Result<(), ApiError> {
         return Err(ApiError::bad_request(format!(
             "路径包含非 ASCII 或控制字符：{p}"
         )));
+    }
+    Ok(())
+}
+
+/// 下载地址校验：只允许 GitHub Releases，且不含 shell 元字符。
+fn check_url(u: &str) -> Result<(), ApiError> {
+    if !u.starts_with("https://github.com/") {
+        return Err(ApiError::bad_request(
+            "只允许从 https://github.com/ 下载发行版包",
+        ));
+    }
+    if u.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(ApiError::bad_request("下载地址包含空白或控制字符"));
+    }
+    const FORBIDDEN: &[char] = &[';', '|', '&', '`', '$', '<', '>', '"', '\'', '\\'];
+    if let Some(c) = u.chars().find(|c| FORBIDDEN.contains(c)) {
+        return Err(ApiError::bad_request(format!(
+            "下载地址包含不允许的字符 `{c}`"
+        )));
+    }
+    Ok(())
+}
+
+/// systemd 单元名校验：只允许常见字符。
+fn check_unit(u: &str) -> Result<(), ApiError> {
+    if u.is_empty()
+        || !u
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "@._-".contains(c))
+    {
+        return Err(ApiError::bad_request("systemd 单元名不合法"));
     }
     Ok(())
 }
@@ -228,7 +267,7 @@ impl AllowedCommand {
             }
             AllowedCommand::Systemctl { action, unit } => {
                 let action = action.as_str();
-                if !["start", "stop", "restart", "status", "is-active", "is-enabled", "enable", "disable", "reload"]
+                if !["start", "stop", "restart", "status", "is-active", "is-enabled", "enable", "disable", "reload", "reset-failed"]
                     .contains(&action)
                 {
                     return Err(ApiError::bad_request(format!("不允许的 systemctl 动作：{action}")));
@@ -307,6 +346,48 @@ impl AllowedCommand {
             ),
             AllowedCommand::Whoami => "id -un 2>/dev/null; sudo -n true 2>/dev/null && echo 'sudo:nopasswd' || echo 'sudo:password'".into(),
             AllowedCommand::FindFrpBinary => "for p in /usr/local/bin/frps /usr/local/bin/frpc /usr/bin/frps /usr/bin/frpc; do [ -x \"$p\" ] && echo \"$p\"; done; true".into(),
+            AllowedCommand::DownloadArchive { url, path } => {
+                check_url(url)?;
+                check_path(path)?;
+                // 优先 curl，失败回退 wget；两者都没有时返回非零
+                format!(
+                    "curl -fsSL --retry 2 --max-time 900 -o {p} {u} || wget -q -O {p} {u}",
+                    p = sh_quote(path),
+                    u = sh_quote(url)
+                )
+            }
+            AllowedCommand::ExtractArchive { archive, member } => {
+                check_path(archive)?;
+                check_path(member)?;
+                // 固定模板：解压到临时目录，输出「临时目录」和「成员文件路径」
+                format!(
+                    "tmp=$(mktemp -d /tmp/frppanel-ex.XXXXXX) || exit 1; \
+                     case {a} in \
+                       *.zip) unzip -oq {a} -d \"$tmp\" >/dev/null 2>&1 || {{ echo NOTFOUND; exit 2; }} ;; \
+                       *) tar -xzf {a} -C \"$tmp\" >/dev/null 2>&1 || {{ echo NOTFOUND; exit 2; }} ;; \
+                     esac; \
+                     src=$(find \"$tmp\" -type f -name {m} | head -n1); \
+                     if [ -n \"$src\" ]; then echo \"$tmp\"; echo \"$src\"; else echo NOTFOUND; exit 3; fi",
+                    a = sh_quote(archive),
+                    m = sh_quote(member)
+                )
+            }
+            AllowedCommand::RemoveDir { path } => {
+                check_path(path)?;
+                if !path.starts_with("/tmp/") {
+                    return Err(ApiError::bad_request("只允许删除 /tmp 下的临时目录"));
+                }
+                sudo.wrap(&format!("rm -rf {}", sh_quote(path)))
+            }
+            AllowedCommand::JournalTail { unit, lines } => {
+                check_unit(unit)?;
+                let n = (*lines).clamp(1, 2000);
+                format!(
+                    "journalctl -u {} -n {} --no-pager -o cat 2>/dev/null || true",
+                    sh_quote(unit),
+                    n
+                )
+            }
         };
 
         // 只有 WriteFile / WriteUnit 接受 stdin
@@ -318,6 +399,15 @@ impl AllowedCommand {
         };
         Ok((cmd, stdin_body))
     }
+
+    /// 长耗时命令的专用超时；None 表示沿用全局默认。
+    pub fn timeout_hint(&self) -> Option<std::time::Duration> {
+        match self {
+            AllowedCommand::DownloadArchive { .. } => Some(std::time::Duration::from_secs(900)),
+            AllowedCommand::ExtractArchive { .. } => Some(std::time::Duration::from_secs(180)),
+            _ => None,
+        }
+    }
 }
 
 /// 执行一条白名单命令，可选地把 `stdin` 作为文件内容（用 base64 传输避免转义问题）。
@@ -327,6 +417,7 @@ pub async fn run(
     sudo: &SudoPrefix,
     stdin: Option<&str>,
 ) -> Result<ExecOutput, ApiError> {
+    let timeout = cmd.timeout_hint();
     let (shell, body) = cmd.render(sudo, stdin)?;
 
     if let Some(content) = body {
@@ -339,10 +430,22 @@ pub async fn run(
             ));
         }
         let full = format!("printf %s {} | base64 -d | {} ", sh_quote(&b64), shell);
-        return session.exec(&full).await;
+        return exec_with(session, &full, timeout).await;
     }
 
-    session.exec(&shell).await
+    exec_with(session, &shell, timeout).await
+}
+
+/// 按需使用长超时执行。
+async fn exec_with(
+    session: &SshSession,
+    command: &str,
+    timeout: Option<std::time::Duration>,
+) -> Result<ExecOutput, ApiError> {
+    match timeout {
+        Some(t) => session.exec_with_timeout(command, t).await,
+        None => session.exec(command).await,
+    }
 }
 
 /// 执行并断言成功（失败时给出阶段化错误）。

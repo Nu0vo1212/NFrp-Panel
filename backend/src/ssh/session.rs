@@ -326,8 +326,17 @@ impl SshSession {
         }
     }
 
-    /// 执行一条命令（带超时）。**调用方必须已经过 `exec::AllowedCommand` 白名单**。
+    /// 执行一条命令（带默认超时）。**调用方必须已经过 `exec::AllowedCommand` 白名单**。
     pub async fn exec(&self, command: &str) -> Result<ExecOutput, ApiError> {
+        self.exec_with_timeout(command, self.command_timeout).await
+    }
+
+    /// 执行一条命令，并指定超时（下载、解包等长耗时操作使用）。
+    pub async fn exec_with_timeout(
+        &self,
+        command: &str,
+        timeout: Duration,
+    ) -> Result<ExecOutput, ApiError> {
         let handle = self.handle.lock().await;
         let mut channel = handle
             .channel_open_session()
@@ -359,12 +368,12 @@ impl SshSession {
             }
         };
 
-        match tokio::time::timeout(self.command_timeout, collect).await {
+        match tokio::time::timeout(timeout, collect).await {
             Err(_) => Err(SshError::new(
                 Phase::Exec,
                 format!(
                     "命令执行超时（{} ms）：{}",
-                    self.command_timeout.as_millis(),
+                    timeout.as_millis(),
                     crate::crypto::redact_line(command)
                 ),
             )

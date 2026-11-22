@@ -150,11 +150,7 @@ impl SshBinaryDriver {
                 }
             }
         }
-        self.row
-            .capabilities
-            .as_ref()
-            .map(|c| c.api_kind)
-            .unwrap_or(ApiKind::Unknown)
+        self.capabilities.lock().await.api_kind
     }
 
     fn sudo(&self) -> Result<SudoPrefix, ApiError> {
@@ -697,8 +693,8 @@ impl Driver for SshBinaryDriver {
         let sudo = self.sudo()?;
         let limit = query.limit.unwrap_or(200).clamp(1, 2000);
 
-        // systemd 优先用 journalctl（如果日志路径不是文件）
-        let out = exec::run(
+        // systemd 部署时 frps/frpc 通常把日志写到 journal，文件可能不存在
+        let mut out = exec::run(
             &s,
             AllowedCommand::Tail {
                 path: self.row.paths.log.clone(),
@@ -708,6 +704,25 @@ impl Driver for SshBinaryDriver {
             None,
         )
         .await?;
+        let mut source = "remote";
+        if out.stdout.trim().is_empty() && self.row.service_mode == ServiceMode::Systemd {
+            if let Ok(j) = exec::run(
+                &s,
+                AllowedCommand::JournalTail {
+                    unit: self.unit_name(),
+                    lines: 2000,
+                },
+                &sudo,
+                None,
+            )
+            .await
+            {
+                if !j.stdout.trim().is_empty() {
+                    out = j;
+                    source = "journal";
+                }
+            }
+        }
 
         let lines: Vec<&str> = out.stdout.lines().collect();
         let needle = query.q.as_deref().map(str::to_lowercase).filter(|s| !s.is_empty());
@@ -744,7 +759,7 @@ impl Driver for SshBinaryDriver {
                 .collect(),
             total: Some(total),
             next_offset: if end < total { Some(end) } else { None },
-            source: "remote".into(),
+            source: source.into(),
             path: self.row.paths.log.clone(),
         })
     }
@@ -907,11 +922,25 @@ impl Driver for SshBinaryDriver {
             flavor: self.row.flavor,
             managed_locally: true,
             remote: true,
-            binary_version: version,
+            binary_version: version.clone(),
             owns_config: true,
         })
         .await;
         *self.capabilities.lock().await = Arc::new(caps.clone());
+
+        // 落库（能力与版本）：否则 SSH 实例的详情页始终显示 api_kind=unknown、
+        // can_start_stop=false，把可用的启停/配置按钮也一起灰掉。
+        let _ = crate::db::repo::update_instance(
+            &self.db,
+            self.row.id,
+            crate::db::repo::InstanceUpdate {
+                capabilities: Some(Some(caps.clone())),
+                binary_version: Some(version),
+                ..Default::default()
+            },
+        )
+        .await;
+
         Ok(caps)
     }
 }

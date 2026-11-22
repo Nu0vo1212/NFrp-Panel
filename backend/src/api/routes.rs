@@ -150,6 +150,7 @@ fn api_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         )
         .route("/deploy/tasks/{task_id}/stream", get(deploy::task_stream))
         .route("/deploy/binary/fetch", post(deploy::fetch_binary))
+        .route("/deploy/releases", get(deploy::list_releases))
         // ---- SSH ----
         .route("/ssh/test-connection", post(ssh::test_connection))
         .route("/ssh/probe", post(ssh::probe_environment))

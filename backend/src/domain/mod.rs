@@ -832,8 +832,8 @@ pub fn parse_log_line(seq: u64, raw: &str) -> LogLine {
     // NFrp:-11-03T13:47:04.404472Z  INFO 消息
     // 官方: 2026-11-03 21:49:24.469 [I] [frps/root.go:124] 消息
     if raw.len() > 20 {
-        let head = &raw[..32.min(raw.len())];
-        let first = head.split_whitespace().next().unwrap_or("");
+        // 只取第一个空白分隔的 token 判断时间戳，避免按字节切片切断 UTF-8
+        let first = raw.split_whitespace().next().unwrap_or("");
         if first.len() >= 20 && first.as_bytes().get(4) == Some(&b'-') {
             ts = Some(first.trim_end_matches(&[',', ':'][..]).to_string());
         }

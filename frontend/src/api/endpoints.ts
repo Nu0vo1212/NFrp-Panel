@@ -31,6 +31,7 @@ import type {
   ProxyOpResult,
   ProxyPreflightResult,
   ProxySpec,
+  ReleaseList,
   RemoteEnvironment,
   Settings,
   SshTestResult,
@@ -209,8 +210,16 @@ export const deployApi = {
     http
       .post<DeployPreflightReport>(`/instances/${id}/deploy/preflight`, body ?? {})
       .then((r) => r.data),
-  run: (id: string, body: { binary_b64?: string; binary_name?: string; config?: string; unit_name?: string }) =>
-    http.post<TaskCreated>(`/instances/${id}/deploy`, body).then((r) => r.data),
+  run: (id: string, body: {
+    binary_b64?: string
+    binary_name?: string
+    config?: string
+    unit_name?: string
+    /** 由目标机自行下载的发行版资产（SSH 部署时优先） */
+    remote_archive_url?: string
+    remote_archive_name?: string
+    remote_archive_sha256?: string
+  }) => http.post<TaskCreated>(`/instances/${id}/deploy`, body).then((r) => r.data),
   status: (id: string) =>
     http.get<DeployTask | null>(`/instances/${id}/deploy/status`).then((r) => r.data),
   rollback: (id: string, backup_id?: string) =>
@@ -223,6 +232,16 @@ export const deployApi = {
         { url, sha256 },
       )
       .then((r) => r.data),
+
+  /** 列出上游仓库的发行版与架构资产。 */
+  releases: (params: {
+    flavor: 'nfrp' | 'official_frp'
+    os?: string
+    arch?: string
+    limit?: number
+    include_prerelease?: boolean
+  }) => http.get<ReleaseList>('/deploy/releases', { params }).then((r) => r.data),
+
   /** 订阅部署事件流（SSE）。返回取消函数。 */
   stream(
     taskId: string,
@@ -297,6 +316,7 @@ export const sshApi = {
     auth_kind: string
     credential_id?: string
     secret_inline?: string
+    passphrase_inline?: string
     config_dir?: string
     candidate_ports?: number[]
   }) => http.post<RemoteEnvironment>('/ssh/probe', body).then((r) => r.data),

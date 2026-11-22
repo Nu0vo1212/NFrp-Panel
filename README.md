@@ -5,7 +5,7 @@
 </div>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.2.0-FB7299" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.2.1-FB7299" alt="Version">
   <img src="https://img.shields.io/badge/protocol-frp%20v1%20%2F%20v2-orange" alt="Protocol">
   <img src="https://img.shields.io/badge/Rust-1.80%2B-dea584" alt="Rust">
   <img src="https://img.shields.io/badge/Vue-3-42b883" alt="Vue">
@@ -19,8 +19,9 @@ FrpPanel 是面向 **[NFrp（Rust-Frp）](https://github.com/Nu0vo1212/Rust-Frp)
 
 后端是 Rust（Axum + SQLite），前端是 Vue 3 + TypeScript。默认**本机二进制模式**：面板直接接管 frp 进程、配置文件与 Admin API；也可以选择 **SSH 远程部署**，或者只把一台已经在跑的实例通过 **Admin API** 纳管起来。面板不内嵌 Go 运行时，也不做黑盒中间层——每一个动作都能在日志里找到对应命令。
 
-> `v0.2.0`：在 `v0.0.1` 的实例管理与 SSH 部署之上，补齐了多用户 RBAC、告警通知、实时日志跟随、
-> 分组与批量操作、配置导入导出，并把令牌与会话安全收紧（撤销、轮换、登录锁定）。
+> `v0.2.1`：SSH 一键部署改为**由目标服务器直接从 GitHub Releases 下载并解包**（面板主机不经手二进制），
+> 支持自选架构包与免凭据的内联密码/私钥；同时修复命令超时、systemd 工作目录与 start-limit 问题，
+> 并在部署完成后自动探测能力并落库。`v0.2.0` 的多用户 RBAC、告警通知、实时日志跟随等能力保持不变。
 > 架构与 API 契约见 [`docs/`](docs/)。
 
 ## 为什么需要它

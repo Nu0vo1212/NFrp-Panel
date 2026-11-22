@@ -19,11 +19,26 @@ use crate::ssh::session::SshSession;
 use crate::ssh::sftp;
 use crate::state::AppState;
 
+/// 远端下载解包规格：由目标机自行从 GitHub 取包，面板主机不经手二进制。
+#[derive(Debug, Clone)]
+pub struct RemoteArchive {
+    /// GitHub 资产下载地址
+    pub url: String,
+    /// 包内成员名（frps / frpc）
+    pub member: String,
+    /// 包文件名（用于日志与指纹）
+    pub archive_name: String,
+    /// 期望的包 SHA256（可选）
+    pub sha256: Option<String>,
+}
+
 /// 部署输入（由 API 层组装）。
 pub struct DeployInput {
     pub instance: InstanceRow,
     /// 二进制内容（None = 只下发配置，不换二进制）
     pub binary: Option<Vec<u8>>,
+    /// 远端自取发行版（SSH 部署时优先生效）
+    pub remote_archive: Option<RemoteArchive>,
     pub binary_name: String,
     pub config: String,
     pub unit_name: String,
@@ -109,7 +124,12 @@ async fn run_inner(
     let install_root = paths.remote_root();
     let cfg_dir = dir_of(&paths.config, "/etc/nfrp");
     let log_dir = dir_of(&paths.log, "/var/log/nfrp");
-    let _ = plan::build_plan(row.role, row.service_mode, row.flavor, input.binary.is_some());
+    let _ = plan::build_plan(
+        row.role,
+        row.service_mode,
+        row.flavor,
+        input.binary.is_some() || input.remote_archive.is_some(),
+    );
 
     // ---- 1. 探测 ----
     hub.start_step(task_id, "probe").await;
@@ -297,6 +317,240 @@ async fn run_inner(
             Some(&format!("已安装到 {target}")),
         )
         .await;
+    } else if let Some(ra) = &input.remote_archive {
+        // ---- 2. 远端下载：由目标机直接从 GitHub 取包，面板主机不经手二进制 ----
+        hub.start_step(task_id, "upload_binary").await;
+        let remote_pkg = format!("/tmp/frppanel-{}-{stamp}.pkg", input.binary_name);
+        if let Err(e) = exec::run_checked(
+            &session,
+            AllowedCommand::DownloadArchive {
+                url: ra.url.clone(),
+                path: remote_pkg.clone(),
+            },
+            &sudo,
+            None,
+            "目标机下载发行版",
+        )
+        .await
+        {
+            let msg = e.to_string();
+            return Err(fail_step(hub, task_id, "upload_binary", msg).await);
+        }
+        hub.log(
+            task_id,
+            "stdout",
+            &format!("目标机已下载 {}", ra.archive_name),
+        )
+        .await;
+        hub.finish_step(
+            task_id,
+            "upload_binary",
+            DeployStepState::Done,
+            Some("目标机下载完成"),
+        )
+        .await;
+
+        // ---- 3. 校验 ----
+        hub.start_step(task_id, "verify_binary").await;
+        let pkg_sha = exec::run(
+            &session,
+            AllowedCommand::Sha256 {
+                path: remote_pkg.clone(),
+            },
+            &sudo,
+            None,
+        )
+        .await
+        .map(|o| o.stdout.trim().to_string())
+        .unwrap_or_default();
+        if pkg_sha.is_empty() {
+            let _ = exec::run(
+                &session,
+                AllowedCommand::RemoveFile {
+                    path: remote_pkg.clone(),
+                },
+                &sudo,
+                None,
+            )
+            .await;
+            return Err(
+                fail_step(hub, task_id, "verify_binary", "下载的包为空或不可读".into()).await,
+            );
+        }
+        if let Some(expect) = ra.sha256.as_deref().filter(|s| !s.is_empty()) {
+            if !pkg_sha.eq_ignore_ascii_case(expect) {
+                let _ = exec::run(
+                    &session,
+                    AllowedCommand::RemoveFile {
+                        path: remote_pkg.clone(),
+                    },
+                    &sudo,
+                    None,
+                )
+                .await;
+                let msg = format!("发行版包哈希不一致（远端 {pkg_sha}，期望 {expect}）");
+                return Err(fail_step(hub, task_id, "verify_binary", msg).await);
+            }
+        }
+        hub.log(task_id, "stdout", &format!("包 sha256：{pkg_sha}"))
+            .await;
+        hub.finish_step(
+            task_id,
+            "verify_binary",
+            DeployStepState::Done,
+            Some("完整性校验通过"),
+        )
+        .await;
+
+        // ---- 4. 远端解包并安装 ----
+        hub.start_step(task_id, "install_binary").await;
+        let out = match exec::run_checked(
+            &session,
+            AllowedCommand::ExtractArchive {
+                archive: remote_pkg.clone(),
+                member: ra.member.clone(),
+            },
+            &sudo,
+            None,
+            "目标机解包",
+        )
+        .await
+        {
+            Ok(o) => o,
+            Err(e) => {
+                let _ = exec::run(
+                    &session,
+                    AllowedCommand::RemoveFile {
+                        path: remote_pkg.clone(),
+                    },
+                    &sudo,
+                    None,
+                )
+                .await;
+                let msg = e.to_string();
+                return Err(fail_step(hub, task_id, "install_binary", msg).await);
+            }
+        };
+
+        let mut lines = out.stdout.lines();
+        let ex_dir = lines.next().unwrap_or("").trim().to_string();
+        let src = lines.next().unwrap_or("").trim().to_string();
+        if src.is_empty() || src == "NOTFOUND" {
+            let _ = exec::run(
+                &session,
+                AllowedCommand::RemoveFile {
+                    path: remote_pkg.clone(),
+                },
+                &sudo,
+                None,
+            )
+            .await;
+            let msg = format!("包内找不到 {}，可能资产选错了", ra.member);
+            return Err(fail_step(hub, task_id, "install_binary", msg).await);
+        }
+
+        let target = format!("{install_root}/{}", input.binary_name);
+        if let Err(e) = exec::run_checked(
+            &session,
+            AllowedCommand::MkdirP {
+                path: install_root.clone(),
+            },
+            &sudo,
+            None,
+            "创建安装目录",
+        )
+        .await
+        {
+            let msg = e.to_string();
+            return Err(fail_step(hub, task_id, "install_binary", msg).await);
+        }
+
+        let exists = exec::run(
+            &session,
+            AllowedCommand::FileExists {
+                path: target.clone(),
+            },
+            &sudo,
+            None,
+        )
+        .await
+        .map(|o| o.stdout.trim() == "yes")
+        .unwrap_or(false);
+        if exists {
+            let bak = format!("{target}.bak.{stamp}");
+            exec::run_checked(
+                &session,
+                AllowedCommand::Copy {
+                    src: target.clone(),
+                    dst: bak.clone(),
+                },
+                &sudo,
+                None,
+                "备份旧二进制",
+            )
+            .await?;
+            hub.log(task_id, "stdout", &format!("已备份旧二进制 → {bak}"))
+                .await;
+            old_binary_backup = Some(bak);
+        }
+
+        for step in [
+            exec::run_checked(
+                &session,
+                AllowedCommand::Move {
+                    src: src.clone(),
+                    dst: target.clone(),
+                },
+                &sudo,
+                None,
+                "安装二进制",
+            )
+            .await,
+            exec::run_checked(
+                &session,
+                AllowedCommand::Chmod {
+                    path: target.clone(),
+                    mode: "0755".into(),
+                },
+                &sudo,
+                None,
+                "设置可执行位",
+            )
+            .await,
+        ] {
+            if let Err(e) = step {
+                let msg = e.to_string();
+                return Err(fail_step(hub, task_id, "install_binary", msg).await);
+            }
+        }
+
+        // 清理临时文件
+        let _ = exec::run(
+            &session,
+            AllowedCommand::RemoveFile {
+                path: remote_pkg.clone(),
+            },
+            &sudo,
+            None,
+        )
+        .await;
+        if ex_dir.starts_with("/tmp/") {
+            let _ = exec::run(
+                &session,
+                AllowedCommand::RemoveDir { path: ex_dir.clone() },
+                &sudo,
+                None,
+            )
+            .await;
+        }
+
+        hub.finish_step(
+            task_id,
+            "install_binary",
+            DeployStepState::Done,
+            Some(&format!("已安装到 {target}")),
+        )
+        .await;
     }
 
     // ---- 5. 配置 ----
@@ -386,6 +640,24 @@ async fn run_inner(
     let use_systemd = row.service_mode == ServiceMode::Systemd && env.systemd;
     if use_systemd {
         hub.start_step(task_id, "write_unit").await;
+        // WorkingDirectory / 日志目录必须先存在，否则 systemd 直接 200/CHDIR
+        for dir in [paths.work_dir.clone(), log_dir.clone()]
+            .into_iter()
+            .filter(|d| !d.trim().is_empty())
+        {
+            if let Err(e) = exec::run_checked(
+                &session,
+                AllowedCommand::MkdirP { path: dir },
+                &sudo,
+                None,
+                "创建工作目录",
+            )
+            .await
+            {
+                let msg = e.to_string();
+                return Err(fail_step(hub, task_id, "write_unit", msg).await);
+            }
+        }
         let unit = crate::systemd::render_unit(
             &input.unit_name,
             row.role,
@@ -475,6 +747,19 @@ async fn run_inner(
 
     // ---- 7. 启动 ----
     hub.start_step(task_id, "start_service").await;
+    if use_systemd {
+        // 清掉崩溃循环累计的 start-limit，否则 restart 会直接失败
+        let _ = exec::run(
+            &session,
+            AllowedCommand::Systemctl {
+                action: "reset-failed".into(),
+                unit: input.unit_name.clone(),
+            },
+            &sudo,
+            None,
+        )
+        .await;
+    }
     let start = if use_systemd {
         exec::run(
             &session,
@@ -573,6 +858,11 @@ async fn run_inner(
         },
     )
     .await?;
+
+    // ---- 10. 能力探测 ----
+    // 部署完成时 Admin API 已就绪，顺手探测一次并把 capabilities 落库，
+    // 否则实例详情页会一直显示 api_kind=unknown、can_start_stop=false。
+    let _ = driver.probe().await;
 
     let _ = session.disconnect().await;
     Ok(())

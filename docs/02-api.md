@@ -37,7 +37,7 @@
 ### `POST /api/auth/refresh` → 同上（不含 refresh_token 轮换时的旧值）
 ### `POST /api/auth/logout` → 204
 ### `GET  /api/auth/me` → `{ id, username, role, created_at }`
-### `GET  /api/health` → `{ "status": "ok", "version": "0.2.0" }`（免鉴权）
+### `GET  /api/health` → `{ "status": "ok", "version": "0.2.1" }`（免鉴权）
 
 ### 会话约束（0.2.0 起）
 

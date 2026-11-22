@@ -134,6 +134,12 @@ pub enum ConnectionInput {
         auth_kind: String,
         #[serde(default)]
         credential_id: Option<String>,
+        /// 未选已有凭据时，直接填写的密码/私钥（加密后自动绑定为实例凭据）
+        #[serde(default)]
+        secret_inline: Option<String>,
+        /// 私钥口令（仅 private_key_passphrase 需要）
+        #[serde(default)]
+        passphrase_inline: Option<String>,
         #[serde(default)]
         sudo: Option<String>,
         #[serde(default)]
@@ -975,7 +981,7 @@ fn parse_id(s: &str) -> Result<Uuid, ApiError> {
 
 async fn build_connection(
     input: Option<ConnectionInput>,
-    _st: &AppState,
+    st: &AppState,
     driver: DriverKind,
 ) -> Result<Connection, ApiError> {
     match input {
@@ -993,6 +999,8 @@ async fn build_connection(
             username,
             auth_kind,
             credential_id,
+            secret_inline,
+            passphrase_inline,
             sudo,
             sudo_cmd,
             host_key_fingerprint,
@@ -1008,17 +1016,58 @@ async fn build_connection(
             }
             let auth = AuthKind::parse(&auth_kind)
                 .ok_or_else(|| ApiError::bad_request(format!("未知认证方式：{auth_kind}")))?;
-            let cred = match credential_id {
+            let mut cred = match credential_id {
                 Some(c) if !c.is_empty() => Some(
                     Uuid::parse_str(&c)
                         .map_err(|_| ApiError::bad_request("凭据 ID 不合法"))?,
                 ),
                 _ => None,
             };
+            // 没选已有凭据时，接受直接填写的密码/私钥：加密后自动创建并绑定，
+            // 这样用户不必先去凭据页登记就能建实例。
             if auth != AuthKind::Agent && cred.is_none() {
-                return Err(ApiError::bad_request(
-                    "密码/私钥认证必须绑定一个凭据（credential_id）",
-                ));
+                let secret = secret_inline.as_deref().map(str::trim).unwrap_or("");
+                if secret.is_empty() {
+                    return Err(ApiError::bad_request(
+                        "请填写 SSH 密码/私钥，或选择一个已有凭据",
+                    ));
+                }
+                let kind = if auth == AuthKind::Password {
+                    crate::db::models::CredentialKind::SshPassword
+                } else {
+                    crate::db::models::CredentialKind::SshPrivateKey
+                };
+                let new_id = Uuid::new_v4();
+                let secret_enc = st
+                    .keys
+                    .encrypt(secret, &format!("credential:{new_id}:secret"))?;
+                let passphrase_enc = match passphrase_inline
+                    .as_deref()
+                    .filter(|p| !p.is_empty())
+                {
+                    Some(p) => Some(
+                        st.keys
+                            .encrypt(p, &format!("credential:{new_id}:passphrase"))?,
+                    ),
+                    None => None,
+                };
+                let name = format!(
+                    "auto-{}-{}",
+                    username.trim(),
+                    &new_id.simple().to_string()[..8]
+                );
+                crate::db::repo::insert_credential_with_id(
+                    &st.db,
+                    new_id,
+                    &name,
+                    kind,
+                    Some(username.trim()),
+                    &secret_enc,
+                    passphrase_enc.as_deref(),
+                    None,
+                )
+                .await?;
+                cred = Some(new_id);
             }
             Ok(Connection::Ssh {
                 host: host.trim().to_string(),

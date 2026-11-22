@@ -4,6 +4,7 @@
 //! 同时把步骤与日志持久化到 `deploy_tasks` 表，断线后可续看。
 
 pub mod catalog;
+pub mod github;
 pub mod hub;
 pub mod plan;
 pub mod preflight;

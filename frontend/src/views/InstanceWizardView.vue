@@ -19,6 +19,7 @@ import type {
   DeployPreflightReport,
   DriverKind,
   InstanceRole,
+  ReleaseList,
   RemoteEnvironment,
   ServiceMode,
   SudoMode,
@@ -35,6 +36,7 @@ const router = useRouter()
 // ---------------------------------------------------------------------------
 
 const step = ref(1)
+const stepDir = ref<1 | -1>(1)
 const totalSteps = 9
 
 const connKind = ref<'local' | 'ssh'>('local')
@@ -52,6 +54,7 @@ const ssh = ref({
   credential_id: '' as string,
   sudo: 'none' as SudoMode,
   secret_inline: '',
+  passphrase_inline: '',
 })
 const credentials = ref<CredentialSummary[]>([])
 const hostKeyChecked = ref(false)
@@ -73,12 +76,28 @@ const serviceMode = ref<ServiceMode>('process')
 const unitName = ref('')
 
 // 安装来源
-const sourceKind = ref<'existing' | 'upload' | 'url'>('existing')
+const sourceKind = ref<'existing' | 'upload' | 'url' | 'github'>('existing')
 const urlInput = ref('')
 const urlSha = ref('')
 const fetchedBinary = ref<{ b64: string; sha256: string; size: number; notes: string[] } | null>(null)
 const uploading = ref(false)
 const uploadedFile = ref<{ b64: string; name: string; size: number } | null>(null)
+
+// GitHub Releases 来源
+const releaseList = ref<ReleaseList | null>(null)
+const releaseLoading = ref(false)
+const selectedVersionIndex = ref(0)
+const selectedAssetUrl = ref('')
+
+const currentVersion = computed(
+  () => releaseList.value?.versions[selectedVersionIndex.value] ?? null,
+)
+const currentAssets = computed(
+  () => (currentVersion.value?.assets ?? []).filter((a) => a.usable),
+)
+const selectedAsset = computed(
+  () => currentAssets.value.find((a) => a.url === selectedAssetUrl.value) ?? null,
+)
 
 // 配置
 const configContent = ref('')
@@ -131,6 +150,7 @@ const skipped = computed(() => {
 
 function nextStep() {
   error.value = null
+  stepDir.value = 1
   let n = step.value + 1
   while (n <= totalSteps && skipped.value.has(n)) n++
   step.value = Math.min(n, totalSteps)
@@ -138,6 +158,7 @@ function nextStep() {
 
 function prevStep() {
   error.value = null
+  stepDir.value = -1
   let n = step.value - 1
   while (n >= 1 && skipped.value.has(n)) n--
   step.value = Math.max(n, 1)
@@ -154,7 +175,9 @@ function canNext(): boolean {
     case 4:
       return true
     case 5:
-      return sourceKind.value !== 'url' || !!fetchedBinary.value
+      if (sourceKind.value === 'github') return !!selectedAsset.value
+      if (sourceKind.value === 'url') return !!fetchedBinary.value
+      return true
     case 6:
       return true
     case 7:
@@ -190,6 +213,8 @@ async function testConnection() {
       auth_kind: ssh.value.auth_kind,
       credential_id: ssh.value.credential_id || undefined,
       secret_inline: ssh.value.credential_id ? undefined : ssh.value.secret_inline || undefined,
+      passphrase_inline:
+        ssh.value.credential_id ? undefined : ssh.value.passphrase_inline || undefined,
     })
     testResult.value = { ok: res.ok, message: res.message, stage: res.stage }
     if (res.host_key) {
@@ -238,6 +263,8 @@ async function probeEnvironment() {
       auth_kind: ssh.value.auth_kind,
       credential_id: ssh.value.credential_id || undefined,
       secret_inline: ssh.value.credential_id ? undefined : ssh.value.secret_inline || undefined,
+      passphrase_inline:
+        ssh.value.credential_id ? undefined : ssh.value.passphrase_inline || undefined,
       config_dir: paths.value.config || '/etc/nfrp',
     })
     // 按探测结果给默认路径
@@ -320,6 +347,46 @@ async function fetchFromUrl() {
   }
 }
 
+function fmtSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`
+}
+
+function pickDefaultAsset() {
+  const assets = currentAssets.value
+  const best =
+    assets.find((a) => a.match_score === 2) ??
+    assets.find((a) => a.match_score === 1) ??
+    assets[0]
+  selectedAssetUrl.value = best?.url ?? ''
+}
+
+async function loadReleases() {
+  releaseLoading.value = true
+  error.value = null
+  try {
+    const list = await deployApi.releases({
+      flavor: flavor.value,
+      os: env.value?.os ?? 'linux',
+      arch: env.value?.arch ?? 'amd64',
+      limit: 8,
+    })
+    releaseList.value = list
+    selectedVersionIndex.value = 0
+    pickDefaultAsset()
+  } catch (e) {
+    error.value = errorMessage(e)
+  } finally {
+    releaseLoading.value = false
+  }
+}
+
+watch(selectedVersionIndex, () => pickDefaultAsset())
+// 切到 GitHub 来源时清掉面板侧缓存的二进制，避免误用
+watch(sourceKind, (k) => {
+  if (k === 'github') fetchedBinary.value = null
+})
+
 // ---------------------------------------------------------------------------
 // 创建 + 预检 + 部署
 // ---------------------------------------------------------------------------
@@ -345,6 +412,9 @@ async function ensureInstance(): Promise<string> {
           username: ssh.value.username.trim(),
           auth_kind: ssh.value.auth_kind,
           credential_id: ssh.value.credential_id || null,
+          secret_inline: ssh.value.credential_id ? undefined : ssh.value.secret_inline || undefined,
+          passphrase_inline:
+            ssh.value.credential_id ? undefined : ssh.value.passphrase_inline || undefined,
           sudo: ssh.value.sudo,
         }
       : { kind: 'local' as const },
@@ -384,8 +454,11 @@ async function runDeploy() {
   deployLogs.value = []
   try {
     const id = await ensureInstance()
+    const remote = sourceKind.value === 'github' ? selectedAsset.value : null
     const task = await deployApi.run(id, {
-      binary_b64: binaryB64(),
+      binary_b64: remote ? undefined : binaryB64(),
+      remote_archive_url: remote?.url,
+      remote_archive_name: remote?.name,
       config: configContent.value,
       unit_name: unitName.value || undefined,
     })
@@ -449,7 +522,15 @@ watch(step, async (s) => {
 // 驱动与连接方式联动
 watch(connKind, (k) => {
   driver.value = k === 'local' ? 'binary' : 'ssh_binary'
-  if (k === 'local') serviceMode.value = 'process'
+  if (k === 'local') {
+    serviceMode.value = 'process'
+    if (sourceKind.value === 'github') sourceKind.value = 'existing'
+  }
+})
+watch(flavor, () => {
+  // 换实现后旧的发行版列表不再适用
+  releaseList.value = null
+  selectedAssetUrl.value = ''
 })
 watch(role, (r) => {
   const bin = r === 'server' ? 'frps' : 'frpc'
@@ -492,6 +573,8 @@ watch(role, (r) => {
     <p v-if="error" class="err-banner" role="alert">{{ error }}</p>
 
     <AcrylicCard :title="`第 ${step} 步 · ${stepMeta[step - 1].label}`">
+      <Transition :name="stepDir > 0 ? 'step-next' : 'step-prev'" mode="out-in">
+        <div :key="step" class="step-pane">
       <!-- 1 连接方式 -->
       <div v-if="step === 1" class="form">
         <label class="field">
@@ -579,7 +662,7 @@ watch(role, (r) => {
           <label class="field">
             <span class="label">凭据</span>
             <select v-model="ssh.credential_id" class="input">
-              <option value="">使用临时凭据（不保存）</option>
+              <option value="">直接填写（自动保存到实例）</option>
               <option v-for="c in credentials" :key="c.id" :value="c.id">
                 {{ c.name }}（{{ c.kind === 'ssh_password' ? '密码' : '私钥' }}）
               </option>
@@ -588,7 +671,7 @@ watch(role, (r) => {
         </div>
 
         <label v-if="!ssh.credential_id" class="field">
-          <span class="label">临时{{ ssh.auth_kind === 'password' ? '密码' : '私钥' }}（仅本次使用，不落库）</span>
+          <span class="label">SSH {{ ssh.auth_kind === 'password' ? '密码' : '私钥' }}（自动加密保存并绑定到该实例）</span>
           <input v-if="ssh.auth_kind === 'password'" v-model="ssh.secret_inline" class="input" type="password" />
           <textarea
             v-else
@@ -597,6 +680,11 @@ watch(role, (r) => {
             rows="5"
             placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
           />
+        </label>
+
+        <label v-if="!ssh.credential_id && ssh.auth_kind === 'private_key_passphrase'" class="field">
+          <span class="label">私钥口令</span>
+          <input v-model="ssh.passphrase_inline" class="input" type="password" />
         </label>
 
         <div class="actions">
@@ -742,7 +830,59 @@ watch(role, (r) => {
               <strong>从 URL 下载</strong>
               <span class="aux">建议同时提供 SHA256</span>
             </button>
+            <button
+              v-if="isRemoteFlow"
+              class="choice"
+              :class="{ active: sourceKind === 'github' }"
+              @click="sourceKind = 'github'"
+            >
+              <strong>GitHub 发行版</strong>
+              <span class="aux">自动抓取最新 Release，可选架构包</span>
+            </button>
           </div>
+        </div>
+
+        <div v-if="sourceKind === 'github'" class="field">
+          <div class="actions">
+            <button class="btn btn-ghost" :disabled="releaseLoading" @click="loadReleases">
+              <Icon :name="releaseLoading ? 'loading' : 'network'" :size="15" :spin="releaseLoading" />
+              {{ releaseLoading ? '抓取中…' : releaseList ? '重新抓取' : '抓取 GitHub 发行版' }}
+            </button>
+            <span v-if="releaseList" class="aux">
+              {{ releaseList.repo }} · 目标 {{ releaseList.target_os }}/{{ releaseList.target_arch }}
+            </span>
+          </div>
+
+          <template v-if="releaseList">
+            <div class="grid-2">
+              <label class="field">
+                <span class="label">版本</span>
+                <select v-model.number="selectedVersionIndex" class="input mono">
+                  <option v-for="(v, i) in releaseList.versions" :key="v.tag" :value="i">
+                    {{ v.version }}{{ v.prerelease ? '（预发布）' : '' }}{{ i === 0 ? ' · 最新' : '' }}
+                  </option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="label">架构包</span>
+                <select v-model="selectedAssetUrl" class="input mono">
+                  <option v-for="a in currentAssets" :key="a.url" :value="a.url">
+                    {{ a.os }}/{{ a.arch }}{{ a.arm_hf ? ' (hardfloat)' : '' }} · {{ fmtSize(a.size)
+                    }}{{ a.match_score === 2 ? ' · 匹配' : a.match_score === 1 ? ' · 系统不同' : '' }}
+                  </option>
+                </select>
+              </label>
+            </div>
+            <p class="aux">
+              部署时由目标服务器直接从 GitHub 下载并解包，面板主机不中转二进制。
+              <template v-if="selectedAsset">
+                已选 {{ selectedAsset.os }}/{{ selectedAsset.arch }} · {{ fmtSize(selectedAsset.size) }}
+              </template>
+            </p>
+            <ul v-if="releaseList.notes.length" class="notes">
+              <li v-for="(n, i) in releaseList.notes" :key="i">{{ n }}</li>
+            </ul>
+          </template>
         </div>
 
         <div v-if="sourceKind === 'upload'" class="field">
@@ -901,6 +1041,8 @@ watch(role, (r) => {
           description="本机模式无需远程部署；创建后即可在详情页启动与配置"
         />
       </div>
+        </div>
+      </Transition>
     </AcrylicCard>
 
     <!-- 底部导航 -->
@@ -1187,6 +1329,43 @@ watch(role, (r) => {
   border-radius: var(--radius-control);
   font-size: var(--fs-log);
   white-space: pre;
+}
+
+/* 步骤切换：下一步从右进、上一步从左进，避免内容整块硬切 */
+.step-pane {
+  display: block;
+}
+.step-next-enter-active,
+.step-prev-enter-active {
+  transition: opacity 200ms var(--ease), transform 200ms var(--ease);
+}
+.step-next-leave-active,
+.step-prev-leave-active {
+  transition: opacity 120ms var(--ease), transform 120ms var(--ease);
+}
+.step-next-enter-from {
+  opacity: 0;
+  transform: translateX(16px);
+}
+.step-next-leave-to {
+  opacity: 0;
+  transform: translateX(-10px);
+}
+.step-prev-enter-from {
+  opacity: 0;
+  transform: translateX(-16px);
+}
+.step-prev-leave-to {
+  opacity: 0;
+  transform: translateX(10px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .step-next-enter-active,
+  .step-prev-enter-active,
+  .step-next-leave-active,
+  .step-prev-leave-active {
+    transition: none;
+  }
 }
 
 .wizard-nav {
